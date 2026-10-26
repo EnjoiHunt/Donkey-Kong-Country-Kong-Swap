@@ -457,6 +457,7 @@ PalPost:                      ; entered by JML with 8-bit A = #$01
 	JSR FacePalette
 	JSR GhostPalette
 	JSR CCMapPalette
+	JSL GoldPalettes
 +
 	PHX
 	PHY
@@ -1040,6 +1041,7 @@ IconAttr:                       ; A = original attribute, X = level index
 	PLA
 	LDA.w #$244E
 .store
+	JSL GoldIcon                ; 4.0: gold face when the level is 100% (all bananas + K-O-N-G)
 	STA.w $0C69,y
 	LDA.w #$0002
 	RTL

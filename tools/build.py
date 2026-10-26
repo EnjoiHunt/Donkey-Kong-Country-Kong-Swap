@@ -400,6 +400,19 @@ _yel = idx_of((248, 232, 64)); _dk = idx_of((120, 72, 16))
 _hud, _ = HT.make(1, 2, _yel, _dk)
 rom[lo_half(0x7C) + 0x2100:lo_half(0x7C) + 0x2100 + len(_hud)] = _hud
 print('hud levels', len(_order), 'yellow', _yel, palette[_yel - 1], 'dark', _dk, palette[_dk - 1])
+# gold versions of the face palettes (map sprite palette 6 and palette 2)
+def _gold(rgb):
+    l = (0.30 * rgb[0] + 0.59 * rgb[1] + 0.11 * rgb[2]) / 248
+    stops = [(0.0, (40, 16, 0)), (0.35, (152, 88, 0)), (0.7, (248, 200, 32)), (1.0, (255, 252, 200))]
+    for (l0, c0), (l1, c1) in zip(stops, stops[1:]):
+        if l <= l1:
+            t = (l - l0) / (l1 - l0)
+            c = [c0[k] + (c1[k] - c0[k]) * t for k in range(3)]
+            return (int(c[0]) >> 3) | ((int(c[1]) >> 3) << 5) | ((int(c[2]) >> 3) << 10)
+    return 0x7FFF
+_p6 = [_rgb(R1[0x39BFC5 + 2 * i] | R1[0x39BFC6 + 2 * i] << 8) for i in range(15)]
+_p2 = [_rgb(R1[0x39BF45 + 2 * i] | R1[0x39BF46 + 2 * i] << 8) for i in range(2)] + [tuple(c) for c in cent]
+write_pal(lo_half(0x40) + 0x3A00, [_gold(c) for c in _p6] + [_gold(c) for c in _p2])
 FR = 0x7C0000
 for f in range(8):
     base = FR + f * 0x400

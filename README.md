@@ -4,12 +4,13 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 ![The four pairs on the world map](docs/images/independent_swap.png)
 ![Level stats on the world map](docs/images/map_stats.png)
+![Gold faces for 100% levels (before / after)](docs/images/gold_icons.png)
 ![A missing partner shown as a ghost](docs/images/ghost_partner.png)
 ![Cranky and Candy on the world map](docs/images/cranky_candy_map.png)
 
 ## Features
 
-- **Level stats on the world map** (new in 4.0): the top-left corner shows, for the level you're standing on, your best banana count from a single run next to the level's total (bonus rooms included), and a **K** once you've collected all four K-O-N-G letters there. Stats are saved with your game at Candy's.
+- **Level stats on the world map** (new in 4.0): the top-left corner shows, for the level you're standing on, your best banana count from a single run next to the level's total (bonus rooms included), and a **K** once you've collected all four K-O-N-G letters there. Stats are saved with your game at Candy's. When a level is 100% complete (every banana and all four letters), the face of the Kong who beat it turns **gold** on the map.
 - **Pick each Kong independently any time on the world map**: **R** cycles the lead Kong (DK → Kiddy → Cranky) and **L** cycles the partner (Diddy → Dixie → Candy). Both Kongs on the map update right away. DK & Diddy stay exactly as in the original game.
 - **Cranky Kong** (new in 3.0) uses DKC1's own Cranky art, including his unused walk cycle. He **swings his cane** instead of rolling.
 - **Candy Kong** (new in 3.0) uses her DKC1 art plus newly made walking, running, jumping, swimming, climbing and carrying frames. Her attack is a **blown kiss**, holding Down plays her whole bend-over-and-blow-a-kiss animation, crawls on her front, and she swoons when hit.
@@ -35,7 +36,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v4.1.bps`](patches/dkc1_kong_swap_v4.1.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v4.1.ips`](patches/dkc1_kong_swap_v4.1.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v4.2.bps`](patches/dkc1_kong_swap_v4.2.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v4.2.ips`](patches/dkc1_kong_swap_v4.2.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
 The patched ROM is 8 MB (ExHiROM). The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`. Older versions are on the Releases page.

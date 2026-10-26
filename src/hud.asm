@@ -432,3 +432,97 @@ LoadPost:                          ; replaces STZ $057F : STZ $057D : STZ $0571
 	PLX
 	PLP
 	RTL
+
+; ---- 4.1: gold level icons -----------------------------------------------------
+; A complete level (best bananas >= total and the K) shows the face of the Kong who beat it
+; in gold: DK/Diddy faces (palette 6) move to palette 3, the other faces (palette 2) to 5.
+!GoldPal = $403A00                 ; 2 x 15 colours: gold of palette 6, gold of palette 2
+GoldIcon:                          ; A = icon attribute, X = entrance, Y = sprite slot. Returns A.
+	PHY
+	JSL GoldIcon2
+	PLY
+	RTL
+GoldIcon2:
+	PHA
+	LDA.l $7E0042
+	CMP.w #$0002
+	BEQ .no                       ; two-player games use palettes 3 and 5 themselves
+	TXA
+	PHX
+	JSR LevelIndex
+	BCS .nox
+	TXA
+	STA.l !HudTmp
+	ASL
+	TAX
+	LDA.l !Best,x
+	CMP.l !HudTotal,x
+	BCC .nox
+	LDA.l !HudTmp
+	JSR BitAddr
+	SEP #$20
+	AND.l !KongB,x
+	REP #$20
+	BEQ .nox
+	PLX
+	PLA
+	PHA
+	AND.w #$0E00
+	CMP.w #$0C00
+	BNE +
+	PLA
+	AND.w #$F1FF
+	ORA.w #$0600                  ; palette 6 -> 3
+	RTL
++	CMP.w #$0400
+	BNE .no
+	PLA
+	AND.w #$F1FF
+	ORA.w #$0A00                  ; palette 2 -> 5
+	RTL
+.nox
+	PLX
+.no
+	PLA
+	RTL
+
+GoldPalettes:                      ; after the map's sprite palettes are uploaded (blanking)
+	PHP
+	REP #$30
+	PHX
+	LDA.l $7E0042
+	CMP.w #$0002
+	BEQ .out
+	SEP #$20
+	LDA.b #$B1                    ; sprite palette 3, colour 1
+	STA.l $002121
+	REP #$20
+	LDX.w #0
+-	LDA.l !GoldPal,x
+	SEP #$20
+	STA.l $002122
+	XBA
+	STA.l $002122
+	REP #$20
+	INX
+	INX
+	CPX.w #30
+	BCC -
+	SEP #$20
+	LDA.b #$D1                    ; sprite palette 5, colour 1
+	STA.l $002121
+	REP #$20
+-	LDA.l !GoldPal,x
+	SEP #$20
+	STA.l $002122
+	XBA
+	STA.l $002122
+	REP #$20
+	INX
+	INX
+	CPX.w #60
+	BCC -
+.out
+	PLX
+	PLP
+	RTL

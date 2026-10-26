@@ -4,6 +4,9 @@ exhirom
 
 !KFlag     = $7E04C0        ; == !Magic when Kiddy replaces DK
 !DFlag     = $7E04C2        ; == !Magic when Dixie replaces Diddy
+!GhostKind = $7E04C4        ; ghost palette last written to sprite palette 0 (1 DK/Diddy, 2 Kiddy/Dixie)
+!PalWant   = $7E04C6        ; scratch: palette bits wanted for a map Kong sprite
+!GhostPal  = $403500        ; 2 x 15 colours
 !Magic     = $4B44          ; "KD" - random power-on RAM can't match by accident
 !PalTemp   = $7E04F2
 !BlkSrc    = $7E04F6
@@ -142,6 +145,7 @@ PoundBox:
 	dw $FFF0,$FFFA,$0020,$0018  ; x -16, top 6 px above the feet, 32 wide, 24 tall
 
 ; Level-complete faces: Kiddy / Dixie get their own map icons
+org $80E2EA : NOP #2          ; world map: always spawn the second Kong (a ghost if absent)
 org $80E6E8                     ; icon animation DMA source (8 frames, now 0x400 bytes each)
 	JSL IconSrc
 	NOP #5
@@ -356,6 +360,7 @@ MapHook:
 	CPX.w #30
 	BCC .dkLoop
 .restore
+	JSR GhostPalette
 	SEP #$20
 	LDA.l !ScreenShadow
 	STA.l $002100
@@ -420,6 +425,7 @@ PalPost:                      ; entered by JML with 8-bit A = #$01
 	CMP.w #$BF03                ; map / island sprite palettes: add the face colours
 	BNE +
 	JSR FacePalette
+	JSR GhostPalette
 +
 	PHX
 	PHY
@@ -504,7 +510,12 @@ BlockTable:
 !SprAttr = $7E0C69
 !SlotMark = $7E0420
 KongPalSlot:
-	PHX
+	JSR GhostSel                ; lead or flags changed -> rewrite the map palettes
+	CMP.l !GhostKind
+	BEQ +
+	LDA.w #$0001
+	STA.l !MapPalOn
++	PHX
 	LDX.w #$0032
 .loop
 	LDA.l !SprID,x
@@ -516,36 +527,86 @@ KongPalSlot:
 .kong
 	LDA.l $7E0D11,x             ; current pose -> which Kong this map sprite is
 	JSR PoseSide                ; A = 0 big Kong, 1 small Kong
+	PHA
+	LDA.l $7E0579               ; partner missing and this isn't the lead Kong -> ghost
+	AND.w #$0001
+	BNE .real
+	LDA.l $7E056F
+	DEC
+	CMP 1,s
+	BEQ .real
+	PLA
+	LDA.w #$0000                ; sprite palette 0 = ghost colours
+	BRA .apply
+.real
+	PLA
 	JSR FlagFor
-	BEQ .dk
+	BEQ .six
+	LDA.w #$0200                ; palette 1 = Kiddy / Dixie map colours
+	BRA .apply
+.six
+	LDA.w #$0C00                ; palette 6 = original DK / Diddy
+.apply
+	STA.l !PalWant
 	LDA.l !SprAttr,x
 	AND.w #$0E00
-	CMP.w #$0C00
-	BNE .next
+	CMP.w #$0C00 : BEQ .set
+	CMP.w #$0200 : BEQ .set
+	CMP.w #$0000 : BNE .next
+.set
 	LDA.l !SprAttr,x
 	AND.w #$F1FF
-	ORA.w #$0200
-	STA.l !SprAttr,x
-	LDA.w #$0001
-	STA.l !SlotMark,x
-	BRA .next
-.dk
-	LDA.l !SlotMark,x
-	BEQ .next
-	LDA.w #$0000
-	STA.l !SlotMark,x
-	LDA.l !SprAttr,x
-	AND.w #$0E00
-	CMP.w #$0200
-	BNE .next
-	LDA.l !SprAttr,x
-	AND.w #$F1FF
-	ORA.w #$0C00
+	ORA.l !PalWant
 	STA.l !SprAttr,x
 .next
 	DEX
 	DEX
 	BPL .loop
+	PLX
+	RTS
+
+GhostSel:                       ; A = 2 if the non-lead Kong is Kiddy/Dixie, else 1
+	LDA.l $7E056F
+	CMP.w #$0001
+	BEQ +
+	LDA.w #$0000                ; Diddy-side leads: ghost is the big Kong
+	BRA ++
++	LDA.w #$0001
+++	JSR FlagFor
+	BEQ +
+	LDA.w #$0002
+	RTS
++	LDA.w #$0001
+	RTS
+
+GhostPalette:                   ; sprite palette 0, colours 1-15 (call during blanking)
+	PHX
+	PHY
+	PHP
+	REP #$30
+	JSR GhostSel
+	STA.l !GhostKind
+	LDX.w #$0000
+	CMP.w #$0002
+	BNE +
+	LDX.w #$001E
++	SEP #$20
+	LDA.b #$81
+	STA.l $002121
+	REP #$20
+	LDY.w #15
+-	LDA.l !GhostPal,x
+	SEP #$20
+	STA.l $002122
+	XBA
+	STA.l $002122
+	REP #$20
+	INX
+	INX
+	DEY
+	BNE -
+	PLP
+	PLY
 	PLX
 	RTS
 

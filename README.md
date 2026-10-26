@@ -3,10 +3,12 @@
 A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** (from DKC3) and **Dixie Kong** (from DKC2) as playable characters. On the world map, **R swaps DK ↔ Kiddy** and **L swaps Diddy ↔ Dixie**, so you can play as any pair: DK & Diddy, Kiddy & Diddy, DK & Dixie, or Kiddy & Dixie.
 
 ![The four pairs on the world map](docs/images/independent_swap.png)
+![A missing partner shown as a ghost](docs/images/ghost_partner.png)
 
 ## Features
 
 - **Swap each Kong independently any time on the world map**: **R** swaps the big Kong (DK ↔ Kiddy) and **L** swaps the small Kong (Diddy ↔ Dixie). Both Kongs on the map update right away. DK & Diddy stay exactly as in the original game.
+- **Both Kongs always appear on the world map.** If one of them is missing (lost in a level, or Diddy still captured at the start), they follow along as a pale **ghost**, so you can always see which two Kongs you have picked.
 - **Dixie's Helicopter Spin**: jump (or walk off a ledge), then hold **B** to twirl her ponytail and float down.
 - **Kiddy's Ground Pound**: press **Down** in mid-air. He pauses, flips, and slams down butt-first.
   - Shatters hidden bonus-room walls (the ones Rambi or a barrel would break).
@@ -27,7 +29,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v2.0.bps`](patches/dkc1_kong_swap_v2.0.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v2.0.ips`](patches/dkc1_kong_swap_v2.0.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v2.1.bps`](patches/dkc1_kong_swap_v2.1.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v2.1.ips`](patches/dkc1_kong_swap_v2.1.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
 The patched ROM is 8 MB (ExHiROM). The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`.

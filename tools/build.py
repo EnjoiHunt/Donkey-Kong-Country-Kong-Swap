@@ -248,6 +248,19 @@ for base, p in ((0x849A, kid), (0x8422, dix)):
 mp = K.read_pal(R3, 0x3D4387)          # DKC3 shared overworld palette (Kiddy + Dixie) -> map sprite slot 1
 write_pal(lo_half(0x40) + 0x3100, mp)
 
+# ghost palettes for the absent partner on the world map (sprite palette 0): pale blue-grey
+def ghost(p):
+    out = []
+    for v in p:
+        r, g, bl = v & 31, (v >> 5) & 31, (v >> 10) & 31
+        n = (0.30 * r + 0.59 * g + 0.11 * bl) / 31
+        c = (min(31, round(9 + 17 * n)), min(31, round(12 + 17 * n)), min(31, round(17 + 14 * n)))
+        out.append(c[0] | c[1] << 5 | c[2] << 10)
+    return out
+dkmap = [R1[0x39BFC5 + 2 * i] | R1[0x39BFC6 + 2 * i] << 8 for i in range(15)]
+write_pal(lo_half(0x40) + 0x3500, ghost(dkmap))        # ghost of DK / Diddy
+write_pal(lo_half(0x40) + 0x351E, ghost(mp))           # ghost of Kiddy / Dixie
+
 
 # --- level-complete face icons (Kiddy / Dixie) -------------------------------------
 import faces as FC

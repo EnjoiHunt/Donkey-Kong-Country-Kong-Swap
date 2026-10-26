@@ -200,6 +200,18 @@ for p, t in pose_assign.items():
     alt[p:p + 4] = bytes([a & 255, (a >> 8) & 255, a >> 16, 0])
 rom[T0:T0 + len(alt)] = alt
 
+# --- per-Kong tables (2.0): Kiddy-only at $7D:0000, Dixie-only at $7D:3000 ----------
+def big_pose(p):   # mirrors PoseSide in kong_swap.asm
+    return p < 0x950 or 0x12AC <= p < 0x12D0
+orig = R1[POSE:POSE + POSE_LEN]
+altK, altD = bytearray(orig), bytearray(orig)
+for p in range(0, POSE_LEN, 4):
+    if alt[p:p + 4] != orig[p:p + 4]:
+        dst = altK if big_pose(p) else altD
+        dst[p:p + 4] = alt[p:p + 4]
+rom[lo_half(0x7D):lo_half(0x7D) + POSE_LEN] = altK
+rom[lo_half(0x7D) + 0x3000:lo_half(0x7D) + 0x3000 + POSE_LEN] = altD
+
 # Kiddy's ground-pound slam frames (his DKC3 roll / somersault), pointer table at $40:3300
 POUND = K.kiddy_groups()['Roll'] if hasattr(K, 'kiddy_groups') else None
 from common import kiddy_groups as _kg

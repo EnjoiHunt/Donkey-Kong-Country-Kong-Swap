@@ -1,12 +1,12 @@
 # Donkey Kong Country: Kong Swap
 
-A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** (from DKC3) and **Dixie Kong** (from DKC2) as a second playable pair. Press **L or R on the world map** to switch between **DK & Diddy** and **Kiddy & Dixie**.
+A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** (from DKC3) and **Dixie Kong** (from DKC2) as playable characters. On the world map, **R swaps DK ↔ Kiddy** and **L swaps Diddy ↔ Dixie**, so you can play as any pair: DK & Diddy, Kiddy & Diddy, DK & Dixie, or Kiddy & Dixie.
 
-![Switching pairs on the world map](docs/images/switching.png)
+![The four pairs on the world map](docs/images/independent_swap.png)
 
 ## Features
 
-- **Switch pairs any time on the world map** with L or R. DK & Diddy stay exactly as in the original game.
+- **Swap each Kong independently any time on the world map**: **R** swaps the big Kong (DK ↔ Kiddy) and **L** swaps the small Kong (Diddy ↔ Dixie). Both Kongs on the map update right away. DK & Diddy stay exactly as in the original game.
 - **Dixie's Helicopter Spin**: jump (or walk off a ledge), then hold **B** to twirl her ponytail and float down.
 - **Kiddy's Ground Pound**: press **Down** in mid-air. He pauses, flips, and slams down butt-first.
   - Shatters hidden bonus-room walls (the ones Rambi or a barrel would break).
@@ -27,10 +27,10 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v1.0.bps`](patches/dkc1_kong_swap_v1.0.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v1.0.ips`](patches/dkc1_kong_swap_v1.0.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v2.0.bps`](patches/dkc1_kong_swap_v2.0.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v2.0.ips`](patches/dkc1_kong_swap_v2.0.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
-The patched ROM is 8 MB (ExHiROM).
+The patched ROM is 8 MB (ExHiROM). The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`.
 
 **No ROMs are included in this repository, and please don't open issues or pull requests containing ROMs.**
 
@@ -58,15 +58,15 @@ This writes `build/dkc1_kong_swap.sfc`, `build/dkc1_kong_swap.bps` and `build/dk
 
 ### How it works
 
-- `src/kong_swap.asm`: all new 65816 code (assembled with asar). It covers the pair switch, the alternate frame-table and palette lookups, the map hooks, the helicopter spin, the ground pound, held-barrel placement and the level-complete faces.
-- `tools/build.py`: expands DKC1 to 8 MB ExHiROM. It builds a second sprite-frame table where every DK/Diddy pose points at a matching Kiddy/Dixie pose, then copies, realigns and recomposes the frames, adds the palettes, and assembles the code.
+- `src/kong_swap.asm`: all new 65816 code (assembled with asar). It covers the per-Kong switches, the alternate frame-table and palette lookups, the map hooks, the helicopter spin, the ground pound, held-barrel placement and the level-complete faces.
+- `tools/build.py`: expands DKC1 to 8 MB ExHiROM. It builds alternate sprite-frame tables (Kiddy only, Dixie only, and both) where DK/Diddy poses point at matching Kiddy/Dixie poses, then copies, realigns and recomposes the frames, adds the palettes, and assembles the code.
 - `data/`: frame names and offsets only (no game graphics).
 
 The original code and data are left untouched except for small hooks, and DK & Diddy use the original tables.
 
 ## Known limitations
 
-- The pair choice resets to DK & Diddy when the console is powered off, though it survives soft resets and save/continue within a session.
+- The Kong choice resets to DK & Diddy when the console is powered off, though it survives soft resets and save/continue within a session.
 - Neither DKC2 nor DKC3 has art of Dixie riding an animal or a cart, so she uses one seated pose for those.
 - Some uncommon poses borrow the closest available animation.
 - On real hardware, pressing L/R on the map may show a one-frame line while the map colours update.

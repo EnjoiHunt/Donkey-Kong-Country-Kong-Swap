@@ -68,10 +68,13 @@ LevelDone:
 	CMP.l !Best,x
 	BCC +
 	STA.l !Best,x
-+	LDA.l $7E057F
++	LDA.l $7E057F                 ; bit 4: the game's "all K-O-N-G found here" flag
+	BIT.w #$0010                  ; (the letter bits are swapped for $90 when the 4th is grabbed)
+	BNE +
 	AND.w #$000F
 	CMP.w #$000F
 	BNE .out
++
 	TXA
 	LSR
 	JSR BitAddr                  ; X = byte, A = mask

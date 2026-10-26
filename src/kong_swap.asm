@@ -64,6 +64,8 @@ exhirom
 
 ; ---------------------------------------------------------------- hooks ---
 
+incsrc "hud.asm"
+
 org $BBA724 : JSL PoseLo     ; four places read the pose table (low word / bank)
 org $BBA72A : JSL PoseHi
 org $BBA7AB : JSL PoseLo
@@ -307,6 +309,7 @@ PalBank:
 ; Runs every frame for the overworld DK sprite (replaces 14 bytes at $80D199).
 MapHook:
 	JSR KongPalSlot
+	JSR HudFrame
 	LDA.l !PressedButtons
 	BEQ .noPress
 	STA.l !MapTimerA
@@ -822,6 +825,7 @@ BarrelY:                        ; Y (up is positive) = holder Y + offset + dy
 	RTL
 
 KongMain:
+	JSR HudLevelFrame
 	LDA.b $84                   ; 0 = DK slot (Kiddy), 2 = Diddy slot
 	BNE +
 	JSR KiddyPound
@@ -1281,6 +1285,13 @@ IconDMA:                        ; runs in NMI right after the icon frame is sent
 	LDA.w #(!CCFaces+$80)&$FFFF
 	LDX.w #!CCFaces>>16
 	LDY.w #$0080
+	JSL $B999AD
+	REP #$30
+	LDA.w #$0E00                ; world-map stats HUD tiles at $E0-$EC
+	STA.l $002116
+	LDA.w #!HudTiles&$FFFF
+	LDX.w #!HudTiles>>16
+	LDY.w #13*32
 	JSL $B999AD
 	REP #$30
 	RTL

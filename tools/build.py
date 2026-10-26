@@ -7,7 +7,7 @@ Layout (8 MB ExHiROM):
                      lower halves ($xx:0000-7FFF) hold the new data:
      $40:0000  alternate pose table      $40:3000  alternate Kong palettes
      $40:3100  map Kiddy palette          $40:4000  hook code (asar)
-     $41-$7B:0000-7FFF  Kiddy/Dixie/Cranky/Candy frames ($7A: Cranky & Candy frame tables)
+     $41-$5F:0000-7FFF  Kiddy/Dixie frames
 """
 import sys, json, subprocess, statistics
 import os, sys
@@ -126,6 +126,13 @@ def _cart(orig, srom, soff):
     a = _sh(srom, soff, ox - sx, ot - st)
     ys, _ = np.nonzero(o); a[ys.max() + 1:] = 0
     return _enc(a)
+_d3e = json.load(open(CFG.data('dkc3_all.json')))['ents']
+_dtob = [(_ang(raster(R3, _d3e[k])), _d3e[k]) for k in range(308, 325)]   # DKC3 Dixie in the toboggan
+_dride = [_d3e[292], _d3e[293]]                                          # DKC3 Dixie crouched: jockey pose
+def _pick_dtob(off):
+    t = _ang(raster(R1, off))
+    if t < -30: t = max(-16, t + 90)
+    return min(_dtob, key=lambda p: abs(p[0] - t))[1]
 def _pick_tob(off):
     t = _ang(raster(R1, off))
     if t < -30: t = max(-16, t + 90)
@@ -138,7 +145,7 @@ for grp in ('DonkeyKong_RideAnimalBuddy', 'DonkeyKong_HangOntoWinky', 'DonkeyKon
     for n, i in enumerate(g1[grp]):
         _raw(i, _ride(NAMES[i][1], R3, _sit[n % len(_sit)]))
 for grp in ('Diddy_RideAnimalBuddy', 'Diddy_Unknown1Pose', 'Diddy_HangOntoWinky', 'Diddy_HangOntoStabbingEnguarde'):
-    for i in g1[grp]:
+    for n, i in enumerate(g1[grp]):
         _raw(i, _ride(NAMES[i][1], R2, _dix_sit))
 for i in g1['DonkeyKong_AngledInMinecart']:
     _raw(i, _cart(NAMES[i][1], R3, _pick_tob(NAMES[i][1])))
@@ -374,6 +381,25 @@ for ty in (0, 1):
         for tx in (0, 1):
             o = CF + ty * 0x80 + (col + tx) * 32
             rom[o:o + 32] = T[ty][tx]
+# --- 4.0: world-map stats (bananas per level, K-O-N-G) --------------------------------
+import bananas as BN, hud_tiles as HT
+_lv = {k: v for k, v in BN.level_totals(R1).items() if v['total'] > 0 and k not in ('UnusedRoom', 'AnimalTokenTest')}
+_order = sorted(_lv, key=lambda k: _lv[k]['entrance'])
+assert len(_order) <= 36, len(_order)
+HUD_IDX = bytearray([0xFF] * 256)
+for n, k in enumerate(_order):
+    for e in _lv[k]['entrances']:
+        HUD_IDX[e] = n
+        HUD_IDX[R1[0x3CBABA + e]] = n
+    HUD_IDX[_lv[k]['entrance']] = n
+rom[lo_half(0x40) + 0x3800:lo_half(0x40) + 0x3900] = HUD_IDX
+for n, k in enumerate(_order):
+    t = _lv[k]['total']; o = lo_half(0x40) + 0x3900 + n * 2
+    rom[o] = t & 255; rom[o + 1] = t >> 8
+_yel = idx_of((248, 232, 64)); _dk = idx_of((120, 72, 16))
+_hud, _ = HT.make(1, 2, _yel, _dk)
+rom[lo_half(0x7C) + 0x2100:lo_half(0x7C) + 0x2100 + len(_hud)] = _hud
+print('hud levels', len(_order), 'yellow', _yel, palette[_yel - 1], 'dark', _dk, palette[_dk - 1])
 FR = 0x7C0000
 for f in range(8):
     base = FR + f * 0x400

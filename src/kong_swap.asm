@@ -752,11 +752,7 @@ BarrelDelta:
 	CMP.w #$000B
 	BCC +
 	LDA.w #$000B
-+	STA.l !BarDY
-	ASL
-	CLC
-	ADC.l !BarDY
-	STA.l !BarDY                ; up to 33 px higher: she is much taller than Diddy
++	STA.l !BarDY                ; up to 11 px higher: she is taller than Diddy
 	BRA .done
 .kiddy
 	LDA.l !KFlag

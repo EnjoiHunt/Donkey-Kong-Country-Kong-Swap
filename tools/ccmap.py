@@ -10,6 +10,7 @@ from common import R1, NAMES, dk1_groups, raster, bbox
 import candy_poses as CP
 from candy_rig import shift, rotate_whole
 from puppet import rot_part
+import cranky_rig as CRIG
 
 g1 = dk1_groups()
 import config as CFG
@@ -38,18 +39,24 @@ WP = rng('WindPhonograph', 1, 12, cr)
 def st(a, b): return [ST[i] for i in range(a, b + 1)]
 CR_SWIM = [rotate_whole(W[i], -65, (126, 112), (126, 108)) for i in (0, 4, 8, 12)]
 
+
+def _fam_shift(ref):
+    return ref
+
+CLEAN = [ST[15], ST[16]]                       # arms up, no eye-pop
+SW, RA = CRIG.SWING, CRIG.RAISED                 # cane swing / cane raised (from WindPhonograph1)
 CR_GROUPS = {
-    'Idle': WP, 'Walk': W, 'Run': W, 'HoldWalk': st(9, 12), 'HoldIdle': [ST[10]],
-    'Jump': st(8, 11), 'Bounce': st(8, 11), 'Land': st(20, 21), 'Turn': [W[0]],
-    'GroundSlap': st(1, 7), 'BeatChest': st(8, 15), 'SitDown': st(20, 24), 'Hurt': F[:4],
-    'Failure': F, 'Pickup': st(20, 23), 'Unknown4Pose': [ST[21]], 'ThrowPose': st(13, 18),
-    'EnterCrawlSpace': st(22, 24), 'Crawling': st(21, 24), 'TooCloseToEdge': st(15, 19),
+    'Idle': WP, 'Walk': W, 'Run': W, 'HoldWalk': CLEAN, 'HoldIdle': [ST[15]],
+    'Jump': [RA[0]], 'Bounce': [RA[0], RA[1]], 'Land': st(20, 21), 'Turn': [W[0]],
+    'GroundSlap': SW, 'BeatChest': RA + CLEAN, 'SitDown': st(20, 24), 'Hurt': F[:4],
+    'Failure': F, 'Pickup': st(20, 23), 'Unknown4Pose': [ST[21]], 'ThrowPose': st(16, 18),
+    'EnterCrawlSpace': st(22, 24), 'Crawling': st(21, 24), 'TooCloseToEdge': st(16, 19),
     'Unknown2Pose': [WP[0]], 'Unknown3Pose': [WP[0]], 'Unknown1_Pose': [WP[0]],
-    'Roll': st(1, 7), 'Swimming': CR_SWIM, 'Duck': st(22, 24), 'UnusedVictory': st(8, 15),
-    'SwingOnRope': [ST[10]], 'HangOnVerticalRope': [ST[10]], 'TurnOnVerticalRope': [ST[10]],
-    'ClimbUpSingleVerticalRope': st(9, 11), 'DonkeyTakesLead': st(8, 12), 'DiddyTakesLead': st(8, 12),
-    'Victory': st(8, 15), 'HeyWatchThis': st(1, 3), 'PrankDiddy': WP, 'FingerBitten': F,
-    'RideAnimalBuddy': [ST[21]], 'HangOntoWinky': [ST[10]], 'HangOntoStabbingEnguarde': [ST[10]],
+    'Roll': SW, 'Swimming': CR_SWIM, 'Duck': st(22, 24), 'UnusedVictory': RA + CLEAN,
+    'SwingOnRope': [ST[15]], 'HangOnVerticalRope': [ST[15]], 'TurnOnVerticalRope': [ST[15]],
+    'ClimbUpSingleVerticalRope': CLEAN, 'DonkeyTakesLead': RA + CLEAN, 'DiddyTakesLead': RA + CLEAN,
+    'Victory': RA + CLEAN, 'HeyWatchThis': SW[:3], 'PrankDiddy': WP, 'FingerBitten': F,
+    'RideAnimalBuddy': [ST[21]], 'HangOntoWinky': [ST[15]], 'HangOntoStabbingEnguarde': [ST[15]],
     'RideSteelKeg': W, 'AngledInMinecart': [ST[21]],
 }
 # ---------------------------------------------------------------- Candy
@@ -60,11 +67,11 @@ SWOON = rng('Swoon', 1, 11, cy)
 def pp(prefix, n): return [P[f'{prefix}{k}'] for k in range(n)]
 CY_GROUPS = {
     'IdleSway': STAND, 'Walk': pp('walk', 8), 'Run': pp('run', 8), 'Jump': [P['jump0'], P['jump1']],
-    'Fall': [P['fall0'], P['fall1']], 'Land': [P['crouch']], 'Roll': KISS, 'Hurt': SWOON,
+    'Fall': [P['fall0'], P['fall1']], 'Land': [KISS[7]], 'Roll': KISS, 'Hurt': SWOON,
     'TooCloseToEdge': SWOON[:6], 'Bounce': [P['jump0'], P['jump1']], 'Victory': KISS,
-    'Failure': SWOON, 'Swimming': pp('swim', 4), 'Pickup': [P['crouch']], 'HoldWalk': pp('carrywalk', 8),
-    'Throw': [P['throw']], 'ScratchHead': STAND, 'Duck': [P['duck']], 'Crawling': pp('crawl', 4),
-    'EnterCrawlSpace': [P['duck']], 'HangOnVerticalRope': [P['hang0']], 'TurnOnVerticalRope': [P['hang1']],
+    'Failure': SWOON, 'Swimming': pp('swim', 4), 'Pickup': KISS[6:9], 'HoldWalk': pp('carrywalk', 8),
+    'Throw': [P['throw']], 'ScratchHead': STAND, 'Duck': [KISS[7]], 'Crawling': KISS[6:10],
+    'EnterCrawlSpace': [KISS[7]], 'HangOnVerticalRope': [P['hang0']], 'TurnOnVerticalRope': [P['hang1']],
     'ClimbUpSingleVerticalRope': [P['hang0'], P['hang1']], 'RideSteelKeg': pp('run', 8),
     'SwingOnRope': [P['hang0'], P['hang1']], 'DiddyTakesLead': KISS, 'DonkeyTakesLead': [P['jump0']],
     'RideAnimalBuddy': [P['sit']], 'Unknown1Pose': [P['sit']], 'HangOntoWinky': [P['hang0']],
@@ -84,14 +91,43 @@ def seat_point(a):
     ys, xs = np.nonzero(a); b = ys.max(); band = xs[ys >= b - 8]
     return int(b), int(band.min())
 
-def build(groups, prefix, ref_feet_y, ref_feet_x, cart_lift=0):
+def small_box(a, scale, x0, y0):
+    """downscale with a fixed origin (x0, y0) so frames stay registered"""
+    ys, xs = np.nonzero(a)
+    x1, y1 = xs.max() + 1, ys.max() + 1
+    w, h = int((x1 - x0) * scale) + 1, int((y1 - y0) * scale) + 1
+    out = np.zeros_like(a)
+    for y in range(h):
+        for x in range(w):
+            sx0, sx1 = x0 + int(x / scale), x0 + int((x + 1) / scale)
+            sy0, sy1 = y0 + int(y / scale), y0 + int((y + 1) / scale)
+            blk = a[sy0:max(sy1, sy0 + 1), sx0:max(sx1, sx0 + 1)]
+            if blk.size == 0: continue
+            v = blk[blk.shape[0] // 2, blk.shape[1] // 2]
+            if v == 0 and np.count_nonzero(blk) * 2 > blk.size:
+                nz = blk[blk > 0]; v = np.bincount(nz).argmax()
+            out[y0 + y, x0 + x] = v
+    return out
+
+FAMILY = {}          # id(raster) -> reference raster of its animation family
+def family(frames, ref):
+    for f in frames: FAMILY[id(f)] = ref
+family(W + CR_SWIM, W[0]); family(WP + SW + RA, WP[0]); family(list(ST.values()), ST[20]); family(F, F[0])
+family(STAND + KISS + SWOON + list(P.values()), STAND[0])
+
+def build(groups, prefix, ref_feet_y, ref_feet_x, cart_lift=0, scale=None):
     out = {}
+    cache = {}
+    def sc(r):
+        if scale is None: return r
+        if id(r) not in cache: cache[id(r)] = small_box(r, scale, 64, 24)
+        return cache[id(r)]
     for grp, srcs in groups.items():
         idxs = g1.get(prefix + grp)
         if not idxs:
             continue
         for n, i in enumerate(idxs):
-            s = srcs[phase(len(idxs), len(srcs), n)]
+            s0 = srcs[phase(len(idxs), len(srcs), n)]; s = sc(s0)
             o = raster(R1, NAMES[i][1])
             if grp in TOP_ALIGN:
                 ot, ox = top_point(o); stt, sx = top_point(s)
@@ -104,7 +140,8 @@ def build(groups, prefix, ref_feet_y, ref_feet_x, cart_lift=0):
                 a = shift(s, ox - sx, ot - stt - cart_lift)
                 ys = np.nonzero(o)[0]; a[ys.max() + 1:] = 0
             else:
-                a = shift(s, int(round(ref_feet_x - feet_x(s))), int(ref_feet_y - feet_row(s)))
+                r = sc(FAMILY.get(id(s0), s0))     # one offset per animation family: no bobbing or sliding
+                a = shift(s, int(round(ref_feet_x - feet_x(r))), int(ref_feet_y - feet_row(r)))
             out[i] = a
     return out
 
@@ -113,7 +150,7 @@ dk_x = statistics.median(feet_x(raster(R1, NAMES[i][1])) for i in g1['DonkeyKong
 dd_y = statistics.median(feet_row(raster(R1, NAMES[i][1])) for i in g1['Diddy_Walk'] + g1['Diddy_IdleSway'])
 dd_x = statistics.median(feet_x(raster(R1, NAMES[i][1])) for i in g1['Diddy_Walk'] + g1['Diddy_IdleSway'])
 ASSIGN_C = build(CR_GROUPS, 'DonkeyKong_', dk_y, dk_x, 6)
-ASSIGN_Y = build(CY_GROUPS, 'Diddy_', dd_y, dd_x, 14)
+ASSIGN_Y = build(CY_GROUPS, 'Diddy_', dd_y, dd_x, 10, scale=2 / 3)   # Candy at 2/3 size
 
 # ---------------------------------------------------------------- world map (small)
 def small(a, scale):
@@ -142,10 +179,19 @@ def map_set(poses, srcs, ref_poses, scale):
     ref = [raster(R1, ptr_at(p)) for p in ref_poses]
     ry = statistics.median(feet_row(r) for r in ref); rx = statistics.median(feet_x(r) for r in ref)
     out = {}
-    sm = [small(s, scale) for s in srcs]
+    # scale every frame inside one shared box so the body keeps its place (no bounce)
+    stack = np.zeros_like(srcs[0])
+    for s in srcs: stack |= (s > 0)
+    ys, xs = np.nonzero(stack); y0, x0 = ys.min(), xs.min()
+    sm = []
+    for s in srcs:
+        c = np.zeros_like(s); c[y0:, x0:] = s[y0:, x0:]
+        big = np.zeros_like(s); big[:] = 0
+        sm.append(small_box(s, scale, x0, y0))
+    ref = small_box(srcs[0], scale, x0, y0)
+    dx, dy = int(round(rx - feet_x(ref))), int(ry - feet_row(ref))
     for n, p in enumerate(poses):
-        s = sm[phase(len(poses), len(sm), n)]
-        out[p] = shift(s, int(round(rx - feet_x(s))), int(ry - feet_row(s)))
+        out[p] = shift(sm[phase(len(poses), len(sm), n)], dx, dy)
     return out
 
 def poses_of(idxs): return [0x8C + 4 * i for i in idxs]
@@ -155,7 +201,7 @@ dk_t = [0x12AC + 4 * k for k in range(9)]; dd_t = [0x12D0 + 4 * k for k in range
 MAP_C, MAP_Y = {}, {}
 CS, YS = 0.5, 0.34
 MAP_C.update(map_set(dk_map_walk, W[::2], dk_map_walk, CS))
-MAP_C.update(map_set(dk_map_vict, st(8, 15), dk_map_walk, CS))
+MAP_C.update(map_set(dk_map_vict, RA + CLEAN, dk_map_walk, CS))
 MAP_C.update(map_set(dk_t, W[::2], dk_t, CS))
 MAP_Y.update(map_set(dd_map_walk, pp('walk', 8), dd_map_walk, YS))
 MAP_Y.update(map_set(dd_map_vict, KISS[::2], dd_map_walk, YS))

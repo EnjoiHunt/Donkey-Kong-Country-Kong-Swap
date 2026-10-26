@@ -10,7 +10,9 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 ## Features
 
-- **Level stats on the world map** (new in 4.0): the top-left corner shows, for the level you're standing on, your best banana count from a single run next to the level's total (bonus rooms included), and a **K** once you've collected all four K-O-N-G letters there. Stats are saved with your game at Candy's. When a level is 100% complete (every banana and all four letters), the face of the Kong who beat it turns **gold** on the map.
+- **Collected bananas stay collected** (new in 4.3): every banana and banana bunch you pick up is remembered with your save file, so when you go back into a level the bananas you already have are gone and only the ones you missed are left.
+- **Level stats on the world map**: the top-left corner shows how many of the level's bananas you've collected next to its total (bonus rooms included, a bunch counts as 10), and a **K** once you've collected all four K-O-N-G letters there. When a level is 100% complete (every banana and all four letters), the face of the Kong who beat it turns **gold** on the map. Everything is saved with your game at Candy's.
+- **The banana counter keeps counting past 100** (new in 4.3): you still get an extra life every 100 bananas, but the counter goes on to 101, 102 and so on (up to 999) instead of starting over.
 - **Pick each Kong independently any time on the world map**: **R** cycles the lead Kong (DK → Kiddy → Cranky) and **L** cycles the partner (Diddy → Dixie → Candy). Both Kongs on the map update right away. DK & Diddy stay exactly as in the original game.
 - **Cranky Kong** (new in 3.0) uses DKC1's own Cranky art, including his unused walk cycle. He **swings his cane** instead of rolling.
 - **Candy Kong** (new in 3.0) uses her DKC1 art plus newly made walking, running, jumping, swimming, climbing and carrying frames. Her attack is a **blown kiss**, holding Down plays her whole bend-over-and-blow-a-kiss animation, crawls on her front, and she swoons when hit.
@@ -36,10 +38,10 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v4.2.bps`](patches/dkc1_kong_swap_v4.2.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v4.2.ips`](patches/dkc1_kong_swap_v4.2.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v4.3.bps`](patches/dkc1_kong_swap_v4.3.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v4.3.ips`](patches/dkc1_kong_swap_v4.3.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
-The patched ROM is 8 MB (ExHiROM). The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`. Older versions are on the Releases page.
+The patched ROM is 8 MB (ExHiROM) with 8 KB of save RAM (up from 2 KB) to hold the collected-banana records. Delete any old `.srm` from versions before 4.3 if your emulator complains about its size; your files keep working either way. The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`. Older versions are on the Releases page.
 
 **No ROMs are included in this repository, and please don't open issues or pull requests containing ROMs.**
 
@@ -70,7 +72,7 @@ This writes `build/dkc1_kong_swap.sfc`, `build/dkc1_kong_swap.bps` and `build/dk
 - `src/kong_swap.asm`: all new 65816 code (assembled with asar). It covers the per-Kong switches (three choices each), the alternate frame-table and palette lookups, the map hooks, the helicopter spin, the ground pound, held-barrel placement and the level-complete faces.
 - `tools/build.py`: expands DKC1 to 8 MB ExHiROM. It builds alternate sprite-frame tables (one per new Kong) where DK/Diddy poses point at matching Kiddy, Dixie, Cranky or Candy poses, then copies, realigns and recomposes the frames, adds the palettes, and assembles the code.
 - `tools/candy_rig.py`, `tools/candy_poses.py`, `tools/puppet.py`: cut Candy's standing frame into limbs and pose them to make her new frames. `tools/ccmap.py` maps every DK/Diddy animation to a Cranky/Candy one, and `tools/enc.py` packs frames into the 32-tile VRAM slot.
-- `src/hud.asm`, `tools/bananas.py`, `tools/hud_tiles.py`: the world-map stats. Banana totals are counted from the level data in your ROM at build time.
+- `src/hud.asm`, `tools/bananas.py`, `tools/banana_layout.py`, `tools/hud_tiles.py`: collected-banana tracking and the world-map stats. Every banana in the game is numbered from the level data in your ROM at build time.
 - `data/`: frame names and offsets only (no game graphics).
 
 The original code and data are left untouched except for small hooks, and DK & Diddy use the original tables.
@@ -82,7 +84,7 @@ The original code and data are left untouched except for small hooks, and DK & D
 - Candy's new frames are made from her standing pose, so they look stiffer than Rare's art. She is shown at two-thirds of her DKC1 size, which is still a little taller than Diddy, while her hitbox stays Diddy-sized.
 - Cranky has no swimming, climbing or riding art, so those poses are built from his walk, arms-up and cabin (TNT-throwing) frames. Candy's riding and mine-cart poses are made the same way as her other new frames.
 - Some uncommon poses borrow the closest available animation.
-- Banana totals count the bananas placed in each level and its bonus rooms. Bananas that only appear after defeating enemies aren't included, so some levels can be beaten by a few. Copying a file on the file-select screen doesn't copy its level stats.
+- Banana totals count the bananas placed in each level and its bonus rooms. Bananas that only appear after defeating enemies or from barrels aren't included, and they always come back. Copying a file on the file-select screen doesn't copy its level stats or collected bananas.
 - On real hardware, pressing L/R on the map may show a one-frame line while the map colours update.
 
 ## Credits

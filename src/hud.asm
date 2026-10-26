@@ -1,41 +1,281 @@
-; ---------------------------------------------------------------- 4.0: level stats on the world map
-; Per level (index from HudIdx): best bananas in one run (word) and "all K-O-N-G collected" (bit).
-; Kept in WRAM, packed into the unused tail of the game's save slot (bytes $116-$153).
-!HudN      = 36                  ; max levels tracked
-!HudIdx    = $403800             ; 256 bytes: main entrance -> level index or $FF
-!HudTotal  = $403900             ; level index -> total bananas (word)
+; ---------------------------------------------------------------- 4.x: level stats on the world map
+; Every banana (each single in a formation, each banana bunch) has a global number k.
+; Collected bananas are remembered per save file and don't come back: the live bitmap sits in
+; expanded SRAM at $B0:7000 (the cartridge is now 8 KB SRAM), each file's saved copy at
+; $B0:6800 + file*$180. K-O-N-G completion bits stay in the unused tail of the game's save slot.
+!HudN      = 36
+!HudIdx    = $403800             ; 256 bytes: entrance -> level index or $FF
+!HudTotal  = $403900             ; level index -> total bananas (bunch = 10)
 !HudTiles  = $7C2100             ; 13 tiles: 0-9, '/', banana, K
-!Best      = $7E0454             ; !HudN words
+!LidTab    = $790000             ; level id -> offset of [N, N x (orig word, k of its lowest bit)]
+!BunchTab  = $790200             ; entrance -> offset of [N, N x k-or-$FFFF] (sprite list entries)
+!RangeTab  = $790400             ; level index -> offset of [n, n x (k, count, weight)]
+!Got       = $B07000             ; live "collected" bitmap (K bits)
+!FileArea  = $B06800             ; + file*$180: saved bitmap, magic word at +$17E
+!GotBytes  = $0170
+!FileMagic = $4247               ; "GB"
 !KongB     = $7E049C             ; 5 bytes of bits
-!RunBan    = $7E04A2             ; bananas collected this run
-!LastLives = $7E04A4
-!HudTmp    = $7E04A6             ; scratch (4 words)
-!StatMagic = $5354
-!SlotTail  = $0116
-!PackN     = 36                  ; packed layout: magic, lo[36], nib[18], kong[5]  = 61 bytes
-
-org $BFD8DE : JSL AddBanana        ; CLC : ADC $057B (every banana added to the counter)
-org $BCB99D : JSL LevelDone        ; JSL CODE_809B9C at the start of the level-finished bookkeeping
-org $B894EC : JSL LoadPre : NOP #2 ; PHA : JSL CODE_B89470 : PLA (load a file)
-org $B89531 : JSL LoadPost : RTS : NOP #5   ; STZ $057F : STZ $057D : STZ $0571 : RTS
-org $B89606 : JSL SaveExtra : NOP  ; SEP #$20 : LDX #$0115 (copy save buffer to SRAM slot)
-org $80A203 : JSL HudDraw : NOP    ; LDX $8E : CPX #$0400 (hide unused OAM entries at frame end)
+!HudTmp    = $7E04A6             ; scratch (5 words)
 !HudFrameNo = $7E04B6
-!SlotPtr = $7E04B8
+!SlotPtr   = $7E04B8
+!CurLid    = $7E04BA             ; level id of the formations currently loaded
+!CacheEnt  = $7E04BC             ; entrance the HUD numbers were computed for (+1, 0 = none)
+!CacheGot  = $7E04BE             ; bananas collected in that level
+!StatMagic = $3253             ; "S2" (4.3 layout: K-O-N-G bits right after it)
+!OldMagic  = $5354             ; 4.0-4.2 layout: K-O-N-G bits at +56
+!SlotTail  = $0116
+
+org $00FFD8 : db $03             ; SRAM size: 8 KB (both headers)
+org $40FFD8 : db $03
+org $80E9B3 : RTS                ; anti-copier SRAM-size probe (it expects a 2 KB mirror)
+
+org $80833A : JSL FormLoad       ; JSL CODE_B8B580 (level banana formations built)
+org $80835D : JSL FormLoad
+org $B8BBF9 : JSL Pick           ; EOR [$53],y : STA [$53],y (a banana is picked up)
+org $BDFA6F : JSL BunchSpawn : NOP   ; LDX $A4 : LDA $192B,x
+org $BFD754 : JSL BunchGot       ; JSL CODE_BCBC37 (a bunch is picked up)
+org $B88288 : JSL NewGame        ; JSL CODE_B899DA (fresh game state: progress cleared)
+org $BCB99D : JSL LevelDone
+org $B894EC : JSL LoadPre : NOP #2
+org $B89531 : JSL LoadPost : RTS : NOP #5
+org $B89606 : JSL SaveExtra : NOP
+org $80A203 : JSL HudDraw : NOP
+org $80A35E : JSL Hundred : db $80,$26   ; BRA $80A38A (written raw: asar mis-encodes it here)   ; 100 bananas: extra life but the counter keeps counting
 
 org $405000
-AddBanana:
+; ---- bit helpers on !Got (A = k) ----------------------------------------------------
+GotAddr:                           ; A = k -> X = byte offset, A = bit mask (8-bit value)
 	PHA
-	CLC
-	ADC.l !RunBan
-	STA.l !RunBan
+	LSR
+	LSR
+	LSR
+	TAX
 	PLA
-	CLC
-	ADC.w $057B
+	AND.w #$0007
+	PHX
+	TAX
+	LDA.l BitMask,x
+	AND.w #$00FF
+	PLX
+	RTS
+BitMask: db $01,$02,$04,$08,$10,$20,$40,$80
+
+GotTest:                           ; A = k -> Z clear if collected
+	JSR GotAddr
+	SEP #$20
+	AND.l !Got,x
+	REP #$20
+	RTS
+
+GotSet:                            ; A = k
+	JSR GotAddr
+	SEP #$20
+	ORA.l !Got,x
+	STA.l !Got,x
+	REP #$20
+	LDA.w #$0000
+	STA.l !CacheEnt                ; numbers changed
+	RTS
+
+; ---- level start: hide bananas already collected --------------------------------------
+FormLoad:
+	JSL $B8B580
+	PHP
+	REP #$30
+	PHX
+	PHY
+	LDA.b $30                     ; level id (formation set)
+	AND.w #$00FF
+	STA.l !CurLid
+	ASL
+	TAX
+	LDA.l !LidTab,x
+	BEQ .out
+	TAX                           ; X = offset of [N, ...] in bank $79
+	LDA.l $790000,x
+	BEQ .out
+	STA.l !HudTmp                 ; N words left
+	INX
+	INX
+	LDY.w #$D000                  ; buffer word
+.word
+	LDA.l $790000,x               ; orig
+	STA.l !HudTmp+2
+	LDA.l $790002,x               ; k of lowest set bit
+	STA.l !HudTmp+4
+	LDA.w #$0001
+	STA.l !HudTmp+6               ; bit
+.bit
+	LDA.l !HudTmp+2
+	AND.l !HudTmp+6
+	BEQ .skip
+	PHX
+	LDA.l !HudTmp+4
+	JSR GotTest
+	BEQ .keep
+	TYX                           ; collected before: remove it from the level
+	LDA.l !HudTmp+6
+	EOR.w #$FFFF
+	AND.l $7E0000,x
+	STA.l $7E0000,x
+.keep
+	PLX
+	LDA.l !HudTmp+4
+	INC
+	STA.l !HudTmp+4
+.skip
+	LDA.l !HudTmp+6
+	ASL
+	STA.l !HudTmp+6
+	BNE .bit
+	INX
+	INX
+	INX
+	INX
+	INY
+	INY
+	LDA.l !HudTmp
+	DEC
+	STA.l !HudTmp
+	BNE .word
+.out
+	PLY
+	PLX
+	PLP
 	RTL
 
-; returns X = level index * 1 (in A too), or carry set if this level isn't tracked
-LevelIndex:                        ; A = main entrance
+; ---- a banana is picked up: A = bits cleared, [$53],y = its word --------------------------
+Pick:
+	PHA
+	EOR.b [$53],y
+	STA.b [$53],y
+	PHP
+	REP #$30
+	PHX
+	PHY
+	TYA
+	CLC
+	ADC.b $53
+	SEC
+	SBC.w #$D000
+	LSR
+	STA.l !HudTmp+8               ; word index j
+	LDA.l !CurLid
+	ASL
+	TAX
+	LDA.l !LidTab,x
+	BEQ .out
+	TAX
+	LDA.l !HudTmp+8
+	CMP.l $790000,x
+	BCS .out
+	ASL
+	ASL
+	CLC
+	ADC.w #2
+	STA.l !HudTmp+8
+	TXA
+	CLC
+	ADC.l !HudTmp+8
+	TAX
+	LDA.l $790000,x
+	STA.l !HudTmp+2               ; orig
+	LDA.l $790002,x
+	STA.l !HudTmp+4               ; k
+	LDA 6,s                       ; the bits picked up (pushed A)
+	STA.l !HudTmp
+	LDA.w #$0001
+	STA.l !HudTmp+6
+-	LDA.l !HudTmp+2
+	AND.l !HudTmp+6
+	BEQ +
+	LDA.l !HudTmp
+	AND.l !HudTmp+6
+	BEQ ++
+	LDA.l !HudTmp+4
+	JSR GotSet
+++	LDA.l !HudTmp+4
+	INC
+	STA.l !HudTmp+4
++	LDA.l !HudTmp+6
+	ASL
+	STA.l !HudTmp+6
+	BNE -
+.out
+	PLY
+	PLX
+	PLP
+	PLA
+	RTL
+
+; ---- banana bunches from the level's sprite list -------------------------------------
+BunchK:                            ; X = list entry index -> A = k or $FFFF (carry set if none)
+	PHX
+	LDA.l $7E003E
+	AND.w #$00FF
+	ASL
+	TAX
+	LDA.l !BunchTab,x
+	BEQ .none
+	TAX
+	LDA 1,s
+	CMP.l $790000,x
+	BCS .none
+	ASL
+	STA.l !HudTmp+8
+	TXA
+	CLC
+	ADC.l !HudTmp+8
+	TAX
+	LDA.l $790002,x
+	CMP.w #$FFFF
+	BEQ .none
+	PLX
+	CLC
+	RTS
+.none
+	PLX
+	LDA.w #$FFFF
+	SEC
+	RTS
+
+BunchSpawn:                        ; replaces LDX $A4 : LDA $192B,x ; A nonzero = don't spawn
+	LDX.b $A4
+	LDA.w $192B,x
+	AND.w #$00FF
+	BNE .out
+	JSR BunchK
+	BCS .zero
+	JSR GotTest
+	BEQ .zero
+	LDX.b $A4
+	LDA.w #$0001
+	RTL
+.zero
+	LDX.b $A4
+	LDA.w #$0000
+.out
+	RTL
+
+BunchGot:
+	JSL $BCBC37
+	PHP
+	REP #$30
+	PHX
+	PHY
+	LDX.b $82                     ; this bunch's sprite slot
+	LDA.w $15FD,x                 ; its sprite-list entry
+	TAX
+	JSR BunchK
+	BCS +
+	JSR GotSet
++	PLY
+	PLX
+	PLP
+	RTL
+
+; ---- K-O-N-G: remembered when the level is finished --------------------------------------
+LevelIndex:                        ; A = entrance -> X = level index (carry set if not tracked)
 	AND.w #$00FF
 	TAX
 	LDA.l !HudIdx,x
@@ -46,6 +286,21 @@ LevelIndex:                        ; A = main entrance
 	CLC
 	RTS
 +	SEC
+	RTS
+
+KBitAddr:                          ; A = level index -> X = byte, A = mask
+	PHA
+	LSR
+	LSR
+	LSR
+	TAX
+	PLA
+	AND.w #$0007
+	PHX
+	TAX
+	LDA.l BitMask,x
+	AND.w #$00FF
+	PLX
 	RTS
 
 LevelDone:
@@ -61,23 +316,14 @@ LevelDone:
 	LDA.l $BCBABA,x              ; checkpoint / exit entrance -> the level's main entrance
 	JSR LevelIndex
 	BCS .out
-	TXA
-	ASL
-	TAX
-	LDA.l !RunBan
-	CMP.l !Best,x
-	BCC +
-	STA.l !Best,x
-+	LDA.l $7E057F                 ; bit 4: the game's "all K-O-N-G found here" flag
-	BIT.w #$0010                  ; (the letter bits are swapped for $90 when the 4th is grabbed)
+	LDA.l $7E057F                 ; bit 4: the game's "all K-O-N-G found here" flag
+	BIT.w #$0010
 	BNE +
 	AND.w #$000F
 	CMP.w #$000F
 	BNE .out
-+
-	TXA
-	LSR
-	JSR BitAddr                  ; X = byte, A = mask
++	TXA
+	JSR KBitAddr
 	SEP #$20
 	ORA.l !KongB,x
 	STA.l !KongB,x
@@ -89,61 +335,125 @@ LevelDone:
 	PLP
 	RTL
 
-BitAddr:                           ; A = index -> X = index/8, A = 1 << (index&7)
-	PHA
-	LSR
-	LSR
-	LSR
-	TAX
-	PLA
-	AND.w #$0007
-	TAY
-	LDA.w #$0001
--	DEY
-	BMI +
-	ASL
+; ---- 100 bananas: an extra life, and the counter keeps going -----------------------------
+Hundred:                           ; runs when the displayed count is about to go up by one
+	LDA.w $0529
+	INC
+	STA.l !HudTmp
+-	CMP.w #100
+	BCC .no
+	BEQ .life
+	SEC
+	SBC.w #100
 	BRA -
-+	RTS
+.life
+	LDA.w $1E25                   ; the game's own extra-life step
+	DEC
+	BPL +
+	STA.w $1E25
+	BRA .no
++	JSL $B6A84B
+.no
+	RTL
 
-; per map frame: a new run starts here; draw the stats of the level under the Kong
+; ---- numbers for a level (cached) ---------------------------------------------------------
+LevelGot:                          ; X = level index -> A = bananas collected there (bunch = 10)
+	TXA
+	ASL
+	TAX
+	LDA.l !RangeTab,x
+	TAX
+	LDA.l $790000,x
+	AND.w #$00FF
+	STA.l !HudTmp+2               ; ranges left
+	INX
+	LDA.w #$0000
+	STA.l !HudTmp+4               ; total
+-	LDA.l !HudTmp+2
+	BEQ .done
+	DEC
+	STA.l !HudTmp+2
+	LDA.l $790000,x               ; k
+	STA.l !HudTmp+6
+	LDA.l $790002,x               ; count
+	STA.l !HudTmp+8
+	PHX
+--	LDA.l !HudTmp+8
+	BEQ +
+	DEC
+	STA.l !HudTmp+8
+	LDA.l !HudTmp+6
+	INC
+	STA.l !HudTmp+6
+	DEC
+	JSR GotTest
+	BEQ --
+	PLX
+	PHX
+	LDA.l $790004,x               ; weight
+	CLC
+	ADC.l !HudTmp+4
+	STA.l !HudTmp+4
+	BRA --
++	PLX
+	INX
+	INX
+	INX
+	INX
+	INX
+	INX
+	BRA -
+.done
+	LDA.l !HudTmp+4
+	RTS
+
+; ---- the world map ------------------------------------------------------------------------
 !OamPtr = !HudTmp+8
 !PosX   = !HudTmp+2
 HudFrame:
 	PHP
 	REP #$30
-	PHX
-	PHY
-	LDA.w #$0000
-	STA.l !RunBan
-	LDA.l $7E0575
-	STA.l !LastLives
 	LDA.l $7E0028
 	STA.l !HudFrameNo             ; the map was active this frame
-.out0
-	PLY
-	PLX
 	PLP
 	RTS
 
-HudDraw:                           ; end of every frame: draw the HUD if the map ran this frame
+HudDraw:                           ; end of every frame: draw the stats if the map ran this frame
 	PHP
 	REP #$30
 	PHX
 	PHY
 	LDA.l $7E0028
 	CMP.l !HudFrameNo
-	BNE .out
+	BEQ +
+	JMP .out
++	LDA.l $7E003E
+	JSR LevelIndex
+	BCC +
+	JMP .out
++	TXA
+	STA.l !HudTmp                 ; level index
+	LDA.l $7E003E
+	AND.w #$00FF
+	INC
+	CMP.l !CacheEnt
+	BEQ +
+	STA.l !CacheEnt
+	LDA.l !HudTmp
+	TAX
+	JSR LevelGot
+	STA.l !CacheGot
 	LDA.l $7E003E
 	JSR LevelIndex
-	BCS .out
 	TXA
-	STA.l !HudTmp                ; level index
-	LDA.l $7E008E                 ; OAM write pointer
+	STA.l !HudTmp
++	LDA.l $7E008E                 ; OAM write pointer
 	CMP.w #$0400-(4*10)
-	BCS .out
-	STA.l !OamPtr
+	BCC +
+	JMP .out
++	STA.l !OamPtr
 	LDA.l !HudTmp                 ; K icon if all letters were found
-	JSR BitAddr
+	JSR KBitAddr
 	SEP #$20
 	AND.l !KongB,x
 	REP #$20
@@ -153,10 +463,7 @@ HudDraw:                           ; end of every frame: draw the HUD if the map
 +	LDA.w #20 : STA.l !PosX
 	LDA.w #$EB : JSR PutTile      ; banana
 	LDA.w #30 : STA.l !PosX
-	LDA.l !HudTmp
-	ASL
-	TAX
-	LDA.l !Best,x
+	LDA.l !CacheGot
 	JSR PutNum
 	LDA.w #$EA : JSR PutTile      ; '/'
 	LDA.l !HudTmp
@@ -174,18 +481,18 @@ HudDraw:                           ; end of every frame: draw the HUD if the map
 	CPX.w #$0400
 	RTL
 
-PutTile:                           ; A = tile; writes one 8x8 OAM entry at !OamPtr, x = !PosX
+PutTile:                           ; A = tile; one 8x8 OAM entry at !OamPtr, x = !PosX
 	PHX
 	PHA
 	LDA.l !OamPtr
 	TAX
 	LDA.l !PosX
 	SEP #$20
-	STA.l $7E0000,x               ; x
+	STA.l $7E0000,x
 	LDA.b #6
-	STA.l $7E0001,x               ; y (above the level name)
+	STA.l $7E0001,x
 	PLA
-	STA.l $7E0002,x               ; tile
+	STA.l $7E0002,x
 	LDA.b #$34                    ; priority 3, palette 2
 	STA.l $7E0003,x
 	PLA
@@ -201,12 +508,13 @@ PutTile:                           ; A = tile; writes one 8x8 OAM entry at !OamP
 	PLX
 	RTS
 
-PutNum:                            ; A = value 0-999, drawn without leading zeros
+PutNum:                            ; A = value 0-9999, no leading zeros
 	STA.l !HudTmp+4
-	LDY.w #0                      ; 1 once a digit has been drawn
+	LDY.w #0
+	LDA.w #1000 : JSR .digit
 	LDA.w #100 : JSR .digit
 	LDA.w #10 : JSR .digit
-	LDY.w #1                      ; always draw the last digit
+	LDY.w #1
 	LDA.w #1 : JSR .digit
 	RTS
 .digit
@@ -223,29 +531,31 @@ PutNum:                            ; A = value 0-999, drawn without leading zero
 	TXA
 	BNE +
 	CPY.w #0
-	BEQ ++                        ; leading zero: skip
+	BEQ ++
 +	LDY.w #1
 	CLC
 	ADC.w #$E0
 	JSR PutTile
 ++	RTS
 
-; level play: a lost life starts a new run (the bananas come back)
 HudLevelFrame:
-	PHA
-	LDA.l $7E0575
-	CMP.l !LastLives
-	BEQ +
-	BCS ++
-	LDA.w #$0000
-	STA.l !RunBan
-++	LDA.l $7E0575
-	STA.l !LastLives
-+	PLA
 	RTS
 
-; ---- saving: pack into the save slot (pointer [$7A]) after the game's $116 bytes
-SaveExtra:
+; ---- saving ----------------------------------------------------------------------------------
+FileOff:                           ; -> X = file * $180
+	LDA.l $7E0581
+	AND.w #$0003
+	TAX
+	LDA.w #$0000
+-	DEX
+	BMI +
+	CLC
+	ADC.w #$0180
+	BRA -
++	TAX
+	RTS
+
+SaveExtra:                         ; [$7A] = the save slot being written
 	PHP
 	REP #$30
 	PHX
@@ -254,55 +564,9 @@ SaveExtra:
 	LDA.w #!StatMagic
 	STA.b [$7A],y
 	LDX.w #0
--	TXA                           ; low bytes of the best counts
+-	TXA
 	CLC
 	ADC.w #!SlotTail+2
-	TAY
-	PHX
-	TXA
-	ASL
-	TAX
-	LDA.l !Best,x
-	PLX
-	SEP #$20
-	STA.b [$7A],y
-	REP #$20
-	INX
-	CPX.w #!PackN
-	BCC -
-	LDX.w #0
--	PHX                           ; high nibbles, two levels per byte
-	TXA
-	ASL
-	ASL
-	TAX
-	LDA.l !Best+1,x
-	AND.w #$000F
-	STA.l !HudTmp
-	LDA.l !Best+3,x
-	AND.w #$000F
-	ASL
-	ASL
-	ASL
-	ASL
-	ORA.l !HudTmp
-	STA.l !HudTmp
-	PLX
-	TXA
-	CLC
-	ADC.w #!SlotTail+2+!PackN
-	TAY
-	LDA.l !HudTmp
-	SEP #$20
-	STA.b [$7A],y
-	REP #$20
-	INX
-	CPX.w #!PackN/2
-	BCC -
-	LDX.w #0
--	TXA                           ; K-O-N-G bits
-	CLC
-	ADC.w #!SlotTail+2+!PackN+(!PackN/2)
 	TAY
 	LDA.l !KongB,x
 	SEP #$20
@@ -311,6 +575,26 @@ SaveExtra:
 	INX
 	CPX.w #5
 	BCC -
+	JSR FileOff                   ; and the collected-banana bitmap
+	TXA
+	STA.l !HudTmp
+	LDY.w #0
+-	TYX
+	LDA.l !Got,x
+	PHA
+	TYA
+	CLC
+	ADC.l !HudTmp
+	TAX
+	PLA
+	STA.l !FileArea,x
+	INY
+	INY
+	CPY.w #!GotBytes
+	BCC -
+	JSR FileOff
+	LDA.w #!FileMagic
+	STA.l !FileArea+$17E,x
 	PLY
 	PLX
 	PLP
@@ -318,114 +602,100 @@ SaveExtra:
 	LDX.w #$0115
 	RTL
 
-; ---- loading
-LoadPre:                           ; replaces PHA : JSL CODE_B89470 : PLA  (A = slot index)
+LoadPre:
 	PHA
 	JSR ClearStats
 	PLA
 	PHA
 	JSL $B89470
-	PHP                           ; keep the carry (file valid)
+	PHP
 	REP #$20
-	LDA.b $7A                     ; the slot that was actually read
+	LDA.b $7A
 	STA.l !SlotPtr
 	PLP
 	PLA
+	RTL
+
+NewGame:
+	JSL $B899DA
+	JSR ClearStats
 	RTL
 
 ClearStats:
 	PHP
 	REP #$30
 	PHX
-	LDX.w #0
 	LDA.w #0
--	STA.l !Best,x
+	LDX.w #0
+-	STA.l !KongB,x
 	INX
 	INX
-	CPX.w #(!HudN*2)+6
+	CPX.w #6
 	BCC -
+	LDX.w #0
+-	STA.l !Got,x
+	INX
+	INX
+	CPX.w #!GotBytes
+	BCC -
+	STA.l !CacheEnt
 	PLX
 	PLP
 	RTS
 
-!Base = !HudTmp+2
-LoadPost:                          ; replaces STZ $057F : STZ $057D : STZ $0571
+LoadPost:
 	PHP
 	REP #$30
 	LDA.w #$0000
 	STA.l $7E057F
 	STA.l $7E057D
 	STA.l $7E0571
+	STA.l !CacheEnt
 	PHX
 	PHY
-	LDA.l !SlotPtr                ; the slot the game just loaded from (bank $B0)
+	LDA.l !SlotPtr
 	CLC
 	ADC.w #!SlotTail
-	STA.l !Base
 	TAX
 	LDA.l $B00000,x
-	CMP.w #!StatMagic
-	BEQ +
-	JMP .out
-+	LDY.w #0
--	TYA                           ; low bytes
+	CMP.w #!OldMagic
+	BNE ++
+	TXA
 	CLC
-	ADC.l !Base
+	ADC.w #54
 	TAX
-	LDA.l $B00002,x
-	AND.w #$00FF
-	PHA
-	TYA
-	ASL
-	TAX
-	PLA
-	STA.l !Best,x
-	INY
-	CPY.w #!PackN
-	BCC -
-	LDY.w #0
--	TYA                           ; high nibbles
-	LSR
-	CLC
-	ADC.l !Base
-	TAX
-	LDA.l $B00002+!PackN,x
-	AND.w #$00FF
-	STA.l !HudTmp+6
-	TYA
-	AND.w #$0001
-	BEQ +
-	LDA.l !HudTmp+6
-	LSR
-	LSR
-	LSR
-	LSR
-	STA.l !HudTmp+6
-+	LDA.l !HudTmp+6
-	AND.w #$000F
-	XBA
-	STA.l !HudTmp+6
-	TYA
-	ASL
-	TAX
-	LDA.l !Best,x
-	ORA.l !HudTmp+6
-	STA.l !Best,x
-	INY
-	CPY.w #!PackN
-	BCC -
-	LDY.w #0
--	TYA                           ; K-O-N-G bits
-	CLC
-	ADC.l !Base
-	TAX
-	LDA.l $B00002+!PackN+(!PackN/2),x
+	BRA +++
+++	CMP.w #!StatMagic
+	BNE +
++++	LDY.w #0
+-	LDA.l $B00002,x
+	PHX
 	TYX
 	SEP #$20
 	STA.l !KongB,x
 	REP #$20
+	PLX
+	INX
 	INY
 	CPY.w #5
+	BCC -
++	JSR FileOff
+	LDA.l !FileArea+$17E,x
+	CMP.w #!FileMagic
+	BNE .out
+	TXA
+	STA.l !HudTmp
+	LDY.w #0
+-	TYA
+	CLC
+	ADC.l !HudTmp
+	TAX
+	LDA.l !FileArea,x
+	TYX
+	STA.l !Got,x
+	INY
+	INY
+	CPY.w #!GotBytes
 	BCC -
 .out
 	PLY
@@ -433,11 +703,9 @@ LoadPost:                          ; replaces STZ $057F : STZ $057D : STZ $0571
 	PLP
 	RTL
 
-; ---- 4.1: gold level icons -----------------------------------------------------
-; A complete level (best bananas >= total and the K) shows the face of the Kong who beat it
-; in gold: DK/Diddy faces (palette 6) move to palette 3, the other faces (palette 2) to 5.
-!GoldPal = $403A00                 ; 2 x 15 colours: gold of palette 6, gold of palette 2
-GoldIcon:                          ; A = icon attribute, X = entrance, Y = sprite slot. Returns A.
+; ---- gold level icons ------------------------------------------------------------------------
+!GoldPal = $403A00
+GoldIcon:                          ; A = icon attribute, X = entrance, Y = sprite slot
 	PHY
 	JSL GoldIcon2
 	PLY
@@ -446,24 +714,28 @@ GoldIcon2:
 	PHA
 	LDA.l $7E0042
 	CMP.w #$0002
-	BEQ .no                       ; two-player games use palettes 3 and 5 themselves
+	BEQ .no
 	TXA
 	PHX
 	JSR LevelIndex
 	BCS .nox
 	TXA
 	STA.l !HudTmp
-	ASL
-	TAX
-	LDA.l !Best,x
-	CMP.l !HudTotal,x
-	BCC .nox
-	LDA.l !HudTmp
-	JSR BitAddr
+	JSR KBitAddr
 	SEP #$20
 	AND.l !KongB,x
 	REP #$20
 	BEQ .nox
+	LDA.l !HudTmp
+	TAX
+	JSR LevelGot
+	PHA
+	LDA.l !HudTmp
+	ASL
+	TAX
+	PLA
+	CMP.l !HudTotal,x
+	BCC .nox
 	PLX
 	PLA
 	PHA
@@ -472,13 +744,13 @@ GoldIcon2:
 	BNE +
 	PLA
 	AND.w #$F1FF
-	ORA.w #$0600                  ; palette 6 -> 3
+	ORA.w #$0600
 	RTL
 +	CMP.w #$0400
 	BNE .no
 	PLA
 	AND.w #$F1FF
-	ORA.w #$0A00                  ; palette 2 -> 5
+	ORA.w #$0A00
 	RTL
 .nox
 	PLX
@@ -486,7 +758,7 @@ GoldIcon2:
 	PLA
 	RTL
 
-GoldPalettes:                      ; after the map's sprite palettes are uploaded (blanking)
+GoldPalettes:
 	PHP
 	REP #$30
 	PHX
@@ -494,7 +766,7 @@ GoldPalettes:                      ; after the map's sprite palettes are uploade
 	CMP.w #$0002
 	BEQ .out
 	SEP #$20
-	LDA.b #$B1                    ; sprite palette 3, colour 1
+	LDA.b #$B1
 	STA.l $002121
 	REP #$20
 	LDX.w #0
@@ -509,7 +781,7 @@ GoldPalettes:                      ; after the map's sprite palettes are uploade
 	CPX.w #30
 	BCC -
 	SEP #$20
-	LDA.b #$D1                    ; sprite palette 5, colour 1
+	LDA.b #$D1
 	STA.l $002121
 	REP #$20
 -	LDA.l !GoldPal,x

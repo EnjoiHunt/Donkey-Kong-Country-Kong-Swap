@@ -53,7 +53,7 @@ alt = bytearray(R1[POSE:POSE + POSE_LEN])
 T0 = lo_half(0x40)
 
 # --- place frames --------------------------------------------------------------
-free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b != 0x7A]   # $7A: Cranky/Candy tables
+free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b not in (0x79, 0x7A)]   # $79: banana tables, $7A: Cranky/Candy tables
 placed = {}
 def put(data):
     for ext in free:
@@ -381,25 +381,58 @@ for ty in (0, 1):
         for tx in (0, 1):
             o = CF + ty * 0x80 + (col + tx) * 32
             rom[o:o + 32] = T[ty][tx]
-# --- 4.0: world-map stats (bananas per level, K-O-N-G) --------------------------------
-import bananas as BN, hud_tiles as HT
-_lv = {k: v for k, v in BN.level_totals(R1).items() if v['total'] > 0 and k not in ('UnusedRoom', 'AnimalTokenTest')}
-_order = sorted(_lv, key=lambda k: _lv[k]['entrance'])
-assert len(_order) <= 36, len(_order)
+# --- 4.0+: world-map stats; every banana numbered so collected ones stay collected ----------
+import bananas as BN, hud_tiles as HT, banana_layout as LY
+_L = LY.build(R1)
+_tracked = [lv for lv in _L['levels'] if lv['ranges']]
+assert len(_tracked) <= 36, len(_tracked)
 HUD_IDX = bytearray([0xFF] * 256)
-for n, k in enumerate(_order):
-    for e in _lv[k]['entrances']:
+for n, lv in enumerate(_tracked):
+    for e in lv['entrances']:
         HUD_IDX[e] = n
         HUD_IDX[R1[0x3CBABA + e]] = n
-    HUD_IDX[_lv[k]['entrance']] = n
+    HUD_IDX[lv['entrance']] = n
 rom[lo_half(0x40) + 0x3800:lo_half(0x40) + 0x3900] = HUD_IDX
-for n, k in enumerate(_order):
-    t = _lv[k]['total']; o = lo_half(0x40) + 0x3900 + n * 2
-    rom[o] = t & 255; rom[o + 1] = t >> 8
+B79 = lo_half(0x79)
+_pos = 0x0600
+def _put79(data):
+    global _pos
+    o = _pos; rom[B79 + o:B79 + o + len(data)] = data; _pos += len(data); assert _pos < 0x8000; return o
+def _w(v): return bytes([v & 255, (v >> 8) & 255])
+for lid, (k0, words, kb) in _L['lid'].items():
+    o = _put79(_w(len(words)) + b''.join(_w(v) + _w(k) for v, k in zip(words, kb)))
+    rom[B79 + lid * 2:B79 + lid * 2 + 2] = _w(o)
+_listoff = {}
+for ptr, (d, n) in _L['lists'].items():
+    if d:
+        _listoff[ptr] = _put79(_w(n) + b''.join(_w(d.get(i, 0xFFFF)) for i in range(n)))
+for e in range(256):
+    ptr = LY.list_ptr(R1, e)
+    if ptr in _listoff:
+        rom[B79 + 0x200 + e * 2:B79 + 0x200 + e * 2 + 2] = _w(_listoff[ptr])
+_nsingle = sum(len(v[1]) and sum(bin(x).count('1') for x in v[1]) for v in _L['lid'].values())
+_bunch_k = {k for d, n in _L['lists'].values() for k in d.values()}
+for n, lv in enumerate(_tracked):
+    rs = []
+    for s0, c in lv['ranges']:
+        # split into single-banana runs (weight 1) and bunch runs (weight 10)
+        cur = None
+        for k in range(s0, s0 + c):
+            wgt = 10 if k in _bunch_k else 1
+            if cur and cur[2] == wgt and cur[0] + cur[1] == k: cur[1] += 1
+            else:
+                cur = [k, 1, wgt]; rs.append(cur)
+    o = _put79(bytes([len(rs)]) + b''.join(_w(a) + _w(c) + _w(wg) for a, c, wg in rs))
+    rom[B79 + 0x400 + n * 2:B79 + 0x400 + n * 2 + 2] = _w(o)
+    t = sum(c * wg for a, c, wg in rs)
+    rom[lo_half(0x40) + 0x3900 + n * 2:lo_half(0x40) + 0x3900 + n * 2 + 2] = _w(t)
+    lv['total'] = t
+assert _L['K'] <= 0x170 * 8, _L['K']
+print('bananas numbered', _L['K'], 'table bytes', _pos, 'levels', len(_tracked))
 _yel = idx_of((248, 232, 64)); _dk = idx_of((120, 72, 16))
 _hud, _ = HT.make(1, 2, _yel, _dk)
 rom[lo_half(0x7C) + 0x2100:lo_half(0x7C) + 0x2100 + len(_hud)] = _hud
-print('hud levels', len(_order), 'yellow', _yel, palette[_yel - 1], 'dark', _dk, palette[_dk - 1])
+print('hud levels', len(_tracked))
 # gold versions of the face palettes (map sprite palette 6 and palette 2)
 def _gold(rgb):
     l = (0.30 * rgb[0] + 0.59 * rgb[1] + 0.11 * rgb[2]) / 248
@@ -450,6 +483,7 @@ assert len(rom) == SIZE
 
 # --- checksum (8 MB: 4 MB + 2 MB counted twice) ----------------------------------
 for hdr in (0x00FFC0, 0x40FFC0):
+    rom[hdr + 0x18] = 0x03                      # 8 KB SRAM (4.3: collected-banana bitmaps)
     rom[hdr + 0x1C:hdr + 0x20] = b'\xff\xff\x00\x00'
 s = sum(rom) & 0xFFFF
 for hdr in (0x00FFC0, 0x40FFC0):

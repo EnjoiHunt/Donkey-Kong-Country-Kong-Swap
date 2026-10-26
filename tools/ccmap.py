@@ -83,7 +83,7 @@ from candy_rig import ground as _ground
 CRAWL = [_ground(rotate_whole(P[f'walk{k}'], -90, (128, 92), (128, 92))) for k in range(8)]   # walk cycle turned 90 degrees forward
 import candy_rig as _CR
 RIDE = [_CR.rotate_whole(_CR.pose(thighL=100, shinL=-5 + 5 * k, thighR=92, shinR=-12 + 5 * k, armR=45 - 5 * k,
-                                  foreR=75 - 5 * k), -12 - 3 * k, (128, 92), (128, 92)) for k in range(2)]
+                                  foreR=75 - 5 * k, no_back_leg=True), -12 - 3 * k, (128, 92), (128, 92)) for k in range(2)]
 RIDE_HIP = (128, 92)          # where her hips are in RIDE frames
 CY_GROUPS = {
     'IdleSway': STAND, 'Walk': pp('walk', 8), 'Run': pp('run', 8), 'Jump': [P['jump0'], P['jump1']],

@@ -54,7 +54,7 @@ def fill_hand_gap(out, dy=0):
 
 
 def pose(thighL=0, shinL=0, thighR=0, shinR=0, armR=0, foreR=None, armL=None, foreL=None,
-         body_dy=0, body_dx=0, hip_arm=True, front='R', arm_behind=False):
+         body_dy=0, body_dx=0, hip_arm=True, front='R', arm_behind=False, no_back_leg=False):
     """Angles in degrees, positive = towards +x (Candy faces +x).
     armL: None keeps the hand on her hip; a number gives her a straight arm
     (a copy of the right arm) at that angle."""
@@ -65,8 +65,9 @@ def pose(thighL=0, shinL=0, thighR=0, shinR=0, armR=0, foreR=None, armL=None, fo
             (THIGH_R, SHIN_R, HIP_R, KNEE_R, thighR, shinR, hipR)]
     if front == 'L':
         legs = legs[::-1]
-    # back leg, torso, front leg
-    limb(S, out, *legs[0])
+    # back leg, torso, front leg (no back leg when straddling an animal: it's on the far side)
+    if not no_back_leg:
+        limb(S, out, *legs[0])
     if armL is not None:
         sh = (SHOULDER_L[0] + body_dx, SHOULDER_L[1] + body_dy)
         fl = armL if foreL is None else foreL

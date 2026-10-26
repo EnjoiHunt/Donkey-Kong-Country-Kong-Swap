@@ -66,7 +66,7 @@ KISS = rng('BlowKiss', 1, 14, cy)
 SWOON = rng('Swoon', 1, 11, cy)
 def pp(prefix, n): return [P[f'{prefix}{k}'] for k in range(n)]
 from candy_rig import ground as _ground
-CRAWL = [_ground(rotate_whole(P[f'walk{k}'], -50, (128, 92), (128, 92))) for k in range(8)]   # walk cycle leaned 50 degrees
+CRAWL = [_ground(rotate_whole(P[f'walk{k}'], -90, (128, 92), (128, 92))) for k in range(8)]   # walk cycle turned 90 degrees forward
 CY_GROUPS = {
     'IdleSway': STAND, 'Walk': pp('walk', 8), 'Run': pp('run', 8), 'Jump': [P['jump0'], P['jump1']],
     'Fall': [P['fall0'], P['fall1']], 'Land': [KISS[7]], 'Roll': KISS, 'Hurt': SWOON,

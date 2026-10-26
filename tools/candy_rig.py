@@ -78,7 +78,11 @@ def pose(thighL=0, shinL=0, thighR=0, shinR=0, armR=0, foreR=None, armL=None, fo
     place(S, BODY if (hip_arm and armL is None) else TORSO_NOARM, (body_dx, body_dy), out)
     if not (hip_arm and armL is None):
         fill_hand_gap(out, 0)
-    limb(S, out, *legs[1])
+    if no_back_leg:
+        # straddling: her left leg (the one on the right of the sprite) is on the far side of the animal
+        limb(S, out, *legs[0])
+    else:
+        limb(S, out, *legs[1])
     if not arm_behind:
         limb(S, out, UPPER_R, FORE_R, SHOULDER_R, ELBOW_R, armR, armR if foreR is None else foreR, sh)
     return outline_fix(out, 1)

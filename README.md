@@ -33,7 +33,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v3.7.bps`](patches/dkc1_kong_swap_v3.7.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v3.7.ips`](patches/dkc1_kong_swap_v3.7.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v3.8.bps`](patches/dkc1_kong_swap_v3.8.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v3.8.ips`](patches/dkc1_kong_swap_v3.8.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
 The patched ROM is 8 MB (ExHiROM). The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`. Older versions are on the Releases page.

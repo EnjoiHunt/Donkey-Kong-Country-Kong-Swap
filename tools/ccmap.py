@@ -65,13 +65,15 @@ STAND = [cy('Stand1'), cy('Stand2'), cy('Stand3'), cy('Stand2')]
 KISS = rng('BlowKiss', 1, 14, cy)
 SWOON = rng('Swoon', 1, 11, cy)
 def pp(prefix, n): return [P[f'{prefix}{k}'] for k in range(n)]
+from candy_rig import ground as _ground
+CRAWL = [_ground(rotate_whole(P[f'walk{k}'], -50, (128, 92), (128, 92))) for k in range(8)]   # walk cycle leaned 50 degrees
 CY_GROUPS = {
     'IdleSway': STAND, 'Walk': pp('walk', 8), 'Run': pp('run', 8), 'Jump': [P['jump0'], P['jump1']],
     'Fall': [P['fall0'], P['fall1']], 'Land': [KISS[7]], 'Roll': KISS, 'Hurt': SWOON,
     'TooCloseToEdge': SWOON[:6], 'Bounce': [P['jump0'], P['jump1']], 'Victory': KISS,
     'Failure': SWOON, 'Swimming': pp('swim', 4), 'Pickup': KISS[6:9], 'HoldWalk': pp('carrywalk', 8),
-    'Throw': [P['throw']], 'ScratchHead': STAND, 'Duck': [KISS[7]], 'Crawling': KISS[6:10],
-    'EnterCrawlSpace': [KISS[7]], 'HangOnVerticalRope': [P['hang0']], 'TurnOnVerticalRope': [P['hang1']],
+    'Throw': [P['throw']], 'ScratchHead': STAND, 'Duck': [KISS[7]], 'Crawling': CRAWL,
+    'EnterCrawlSpace': CRAWL[:2], 'HangOnVerticalRope': [P['hang0']], 'TurnOnVerticalRope': [P['hang1']],
     'ClimbUpSingleVerticalRope': [P['hang0'], P['hang1']], 'RideSteelKeg': pp('run', 8),
     'SwingOnRope': [P['hang0'], P['hang1']], 'DiddyTakesLead': KISS, 'DonkeyTakesLead': [P['jump0']],
     'RideAnimalBuddy': [P['sit']], 'Unknown1Pose': [P['sit']], 'HangOntoWinky': [P['hang0']],
@@ -113,7 +115,7 @@ FAMILY = {}          # id(raster) -> reference raster of its animation family
 def family(frames, ref):
     for f in frames: FAMILY[id(f)] = ref
 family(W + CR_SWIM, W[0]); family(WP + SW + RA, WP[0]); family(list(ST.values()), ST[20]); family(F, F[0])
-family(STAND + KISS + SWOON + list(P.values()), STAND[0])
+family(STAND + KISS + SWOON + list(P.values()) + CRAWL, STAND[0])
 
 def build(groups, prefix, ref_feet_y, ref_feet_x, cart_lift=0, scale=None):
     out = {}

@@ -21,7 +21,9 @@
 !CurLid    = $7E04BA             ; level id of the formations currently loaded
 !CacheEnt  = $7E04BC             ; entrance the HUD numbers were computed for (+1, 0 = none)
 !CacheGot  = $7E04BE             ; bananas collected in that level
-!StatMagic = $3253             ; "S2" (4.3 layout: K-O-N-G bits right after it)
+!StatMagic = $3353             ; "S3" (5.0 layout: K-O-N-G bits, then cabin / save-point bits)
+!Stat2Magic = $3253            ; "S2" (4.3 layout: K-O-N-G bits only)
+!ShopB     = $7E04A2             ; lo: Cranky's Cabins visited, hi: Candy's Save Points saved at
 !OldMagic  = $5354             ; 4.0-4.2 layout: K-O-N-G bits at +56
 !SlotTail  = $0116
 
@@ -357,6 +359,94 @@ Hundred:                           ; runs when the displayed count is about to g
 	RTL
 
 ; ---- numbers for a level (cached) ---------------------------------------------------------
+; 5.0: "every banana and every K-O-N-G in every level" is checked one level per map frame,
+; because the map runs inside NMI and a full pass would overrun the frame.
+!DoneIdx = $7E04C8                 ; level being checked
+!DoneAcc = $7E04CC                 ; !OkMagic while every level so far is complete
+!AllOK   = $7E04A4                 ; result of the last full pass
+!OkMagic = $4F4B                   ; "OK" (random power-on RAM can't match by accident)
+
+AllDone:                           ; Z clear (A = 1) if the last full pass found a 100% file
+	LDA.l !AllOK
+	CMP.w #!OkMagic
+	BEQ +
+	LDA.w #$0000
+	RTS
++	LDA.w #$0001
+	RTS
+
+DoneReset:                         ; a file was loaded / started: begin a fresh pass
+	LDA.w #$0000
+	STA.l !AllOK
+	STA.l !DoneIdx
+	LDA.w #!OkMagic
+	STA.l !DoneAcc
+	RTS
+
+!GotFull = 354                     ; bananas are numbered 0-2834: 354 full bytes ...
+!GotLast = $07                     ; ... and 3 bits of the next one (build_v2.py asserts this)
+
+DoneStep:                          ; carry set if a pass just finished and the file is NOT 100%
+	PHX
+	LDA.l !DoneIdx
+	CMP.w #!GotFull
+	BCS .tail
+	TAX
+	CLC
+	ADC.w #16                     ; 16 bytes of the collected-banana bitmap per frame
+	STA.l !DoneIdx
+-	LDA.l !Got,x
+	CMP.w #$FFFF
+	BNE .bad
+	INX
+	INX
+	TXA
+	CMP.w #!GotFull
+	BCS .clc
+	CMP.l !DoneIdx
+	BCC -
+	BRA .clc
+.bad
+	LDA.w #$0000
+	STA.l !DoneAcc
+	LDA.w #!GotFull               ; no need to look further this pass
+	STA.l !DoneIdx
+	BRA .clc
+.tail
+	LDA.l !Got+!GotFull
+	AND.w #!GotLast
+	CMP.w #!GotLast
+	BNE .no
+	LDA.l !KongB                  ; K-O-N-G in all 33 levels
+	CMP.w #$FFFF
+	BNE .no
+	LDA.l !KongB+2
+	CMP.w #$FFFF
+	BNE .no
+	LDA.l !KongB+4
+	AND.w #$0001
+	BNE .end
+.no
+	LDA.w #$0000
+	STA.l !DoneAcc
+.end
+	LDA.l !DoneAcc
+	STA.l !AllOK
+	LDA.w #!OkMagic
+	STA.l !DoneAcc
+	LDA.w #$0000
+	STA.l !DoneIdx
+	LDA.l !AllOK
+	CMP.w #!OkMagic
+	BEQ .clc
+	PLX
+	SEC
+	RTS
+.clc
+	PLX
+	CLC
+	RTS
+
 LevelGot:                          ; X = level index -> A = bananas collected there (bunch = 10)
 	TXA
 	ASL
@@ -560,6 +650,21 @@ SaveExtra:                         ; [$7A] = the save slot being written
 	REP #$30
 	PHX
 	PHY
+	LDA.l $7E003E                  ; 5.0: saved at Candy's ($FA-$FF) -> mark this Save Point
+	AND.w #$00FF
+	SEC
+	SBC.w #$00FA
+	CMP.w #$0006
+	BCS +
+	TAX
+	LDA.l BitMask,x
+	AND.w #$00FF
+	XBA
+	ORA.l !ShopB
+	STA.l !ShopB
++	LDY.w #!SlotTail+7
+	LDA.l !ShopB
+	STA.b [$7A],y
 	LDY.w #!SlotTail
 	LDA.w #!StatMagic
 	STA.b [$7A],y
@@ -619,6 +724,7 @@ LoadPre:
 NewGame:
 	JSL $B899DA
 	JSR ClearStats
+	JSR ValidateFlags
 	RTL
 
 ClearStats:
@@ -630,7 +736,7 @@ ClearStats:
 -	STA.l !KongB,x
 	INX
 	INX
-	CPX.w #6
+	CPX.w #8                      ; K-O-N-G bits and the cabin / save-point bits
 	BCC -
 	LDX.w #0
 -	STA.l !Got,x
@@ -639,6 +745,7 @@ ClearStats:
 	CPX.w #!GotBytes
 	BCC -
 	STA.l !CacheEnt
+	JSR DoneReset
 	PLX
 	PLP
 	RTS
@@ -666,6 +773,13 @@ LoadPost:
 	TAX
 	BRA +++
 ++	CMP.w #!StatMagic
+	BNE ++++
+	LDA.l $B00007,x                ; 5.0: cabin / save-point bits
+	STA.l !ShopB
+	LDA.l $B00000,x
+++++	CMP.w #!Stat2Magic
+	BEQ +++
+	CMP.w #!StatMagic
 	BNE +
 +++	LDY.w #0
 -	LDA.l $B00002,x
@@ -698,6 +812,7 @@ LoadPost:
 	CPY.w #!GotBytes
 	BCC -
 .out
+	JSR ValidateFlags
 	PLY
 	PLX
 	PLP

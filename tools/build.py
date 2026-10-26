@@ -53,7 +53,7 @@ alt = bytearray(R1[POSE:POSE + POSE_LEN])
 T0 = lo_half(0x40)
 
 # --- place frames --------------------------------------------------------------
-free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b not in (0x79, 0x7A)]   # $79: banana tables, $7A: Cranky/Candy tables
+free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b not in (0x78, 0x79, 0x7A)]   # $78: Funky table, $79: banana tables, $7A: Cranky/Candy tables
 placed = {}
 def put(data):
     for ext in free:
@@ -247,7 +247,10 @@ def _merge_pal(sets):
         maps.append([0] + [1 + min(range(15), key=lambda j: _d2(_rgb(p[i]), cent[j])) for i in range(15)])
     pal = [(c[0] >> 3) | ((c[1] >> 3) << 5) | ((c[2] >> 3) << 10) for c in cent]
     return pal, maps
-CC_MAP_PAL, (MC_MAP, MY_MAP) = _merge_pal([(list(CM.MAP_C.values()), CRA_PAL), (list(CM.MAP_Y.values()), CAN_PAL)])
+import fkmap as FM, funky as FF
+FUN_PAL = K.read_pal(R2, FF.PAL_OFF)
+CC_MAP_PAL, (MC_MAP, MY_MAP, MF_MAP) = _merge_pal([(list(CM.MAP_C.values()), CRA_PAL), (list(CM.MAP_Y.values()), CAN_PAL),
+                                                   (list(FM.MAP_F.values()), FUN_PAL)])
 def _remap(r, m):
     lut = np.array(m, dtype=np.uint8); return lut[r]
 gen_cache = {}
@@ -270,6 +273,17 @@ for i in g1['HUDBalloon_Idle']:
 rom[lo_half(0x7A):lo_half(0x7A) + POSE_LEN] = altC
 rom[lo_half(0x7A) + 0x3000:lo_half(0x7A) + 0x3000 + POSE_LEN] = altY
 print('cranky/candy frames', len(gen_cache))
+# --- 5.0: Funky (DK side, after Cranky on R; unlocked by a 100% file) at $78:0000 ---
+altF = bytearray(orig)
+for i, r in FM.ASSIGN_F.items():
+    e = (0x3BCD28 + i * 4) - POSE; altF[e:e + 4] = put_raster(r)
+for p, r in FM.MAP_F.items(): altF[p:p + 4] = put_raster(_remap(r, MF_MAP))
+_BAL_F = [0] + [1 + min(range(15), key=lambda j: _d2(_rgb(_dkp[i - 1]), _rgb(FUN_PAL[j]))) for i in range(1, 16)]
+for i in g1['HUDBalloon_Idle']:
+    d = recolor(NAMES[i][1], _BAL_F); o = put(d); a = snes(o)
+    e = (0x3BCD28 + i * 4) - POSE; altF[e:e + 4] = bytes([a & 255, (a >> 8) & 255, a >> 16, 0])
+rom[lo_half(0x78):lo_half(0x78) + POSE_LEN] = altF
+print('funky frames', len(gen_cache))
 
 # Kiddy's ground-pound slam frames (his DKC3 roll / somersault), pointer table at $40:3300
 POUND = K.kiddy_groups()['Roll'] if hasattr(K, 'kiddy_groups') else None
@@ -323,6 +337,10 @@ write_pal(lo_half(0x40) + 0x353C, ghost(CC_MAP_PAL))   # ghost of Cranky / Candy
 write_pal(lo_half(0x40) + 0x3700, CC_MAP_PAL)          # map sprite palette 4
 P2 = lo_half(0x40) + 0x3600
 rom[P2:P2 + 0xF0] = R1[0x3C8422:0x3C8512]
+P3 = lo_half(0x40) + 0x3B00                      # 5.0: Funky's in-level palettes (DK slot)
+rom[P3:P3 + 0xF0] = R1[0x3C8422:0x3C8512]
+o = P3 + 0x849A - 0x8422
+write_pal(o, FUN_PAL); write_pal(o + 0x1E, K.inactive(FUN_PAL)); write_pal(o + 0x3C, FUN_PAL); write_pal(o + 0x5A, K.inactive(FUN_PAL))
 for base, p in ((0x849A, CRA_PAL), (0x8422, CAN_PAL)):
     o = P2 + base - 0x8422
     write_pal(o, p); write_pal(o + 0x1E, K.inactive(p)); write_pal(o + 0x3C, p); write_pal(o + 0x5A, K.inactive(p))
@@ -339,7 +357,14 @@ def _cc_face(name, box, p15, n=15, ox=0, oy=0):
     return FC.to_rgb(FC.fit(FC.shrink(sub, pal16, n), 16, ox, oy), pal16)
 cr_, cm_ = _cc_face('CrankyKong_WindPhonograph1', (120, 91, 18, 18), CRA_PAL, 15, 0, 1)
 cy_, cym = _cc_face('CandyKong_Stand1', (117, 52, 26, 24), CAN_PAL, 15, 1, 0)
-cols = [tuple(int(c) for c in cr_[y, x]) for y in range(16) for x in range(16) if cm_[y, x]] + \
+def _fk_face(box, n=15, ox=0, oy=0):
+    pal16 = [(0, 0, 0)] + [_rgb(v) for v in FUN_PAL]
+    x0, y0, w, h = box
+    sub = FF.STAND[0][y0:y0 + h, x0:x0 + w]
+    return FC.to_rgb(FC.fit(FC.shrink(sub, pal16, n), 16, ox, oy), pal16)
+fk_, fkm = _fk_face((112, 88, 24, 22), 15, 0, 1)
+cols = [tuple(int(c) for c in fk_[y, x]) for y in range(16) for x in range(16) if fkm[y, x]] + \
+       [tuple(int(c) for c in cr_[y, x]) for y in range(16) for x in range(16) if cm_[y, x]] + \
        [tuple(int(c) for c in cy_[y, x]) for y in range(16) for x in range(16) if cym[y, x]] + \
        [tuple(int(c) for c in kr[y, x]) for y in range(16) for x in range(16) if km[y, x]] + \
        [tuple(int(c) for c in dr_[y, x]) for y in range(16) for x in range(16) if dm[y, x]]
@@ -350,11 +375,12 @@ rest = [c for c in cols if near(c, WHITE) > 900 and near(c, BLACK) > 900]
 import random
 random.seed(3)
 uniq = sorted(set(rest), key=lambda c: -rest.count(c))
-cent = uniq[:13] + [uniq[0]] * max(0, 13 - len(uniq))
+cent = uniq[:12] + [uniq[0]] * max(0, 12 - len(uniq))
 for _ in range(20):
     groups = [[] for _ in cent]
     for c in rest: groups[min(range(len(cent)), key=lambda i: near(c, cent[i]))].append(c)
     cent = [tuple(sum(v[k] for v in g) // len(g) for k in range(3)) if g else cent[i] for i, g in enumerate(groups)]
+cent = cent + [(248, 232, 64)]                  # 5.0: keep a true yellow for the HUD banana / K icons
 palette = [WHITE, BLACK] + cent                 # indices 1..15
 def idx_of(c): return 1 + min(range(15), key=lambda i: near(c, palette[i]))
 def tiles16(rgb, m):
@@ -375,6 +401,11 @@ def tiles16(rgb, m):
     return t
 KT, DT = tiles16(kr, km), tiles16(dr_, dm)
 CT, YT = tiles16(cr_, cm_), tiles16(cy_, cym)
+FT = tiles16(fk_, fkm)                          # 5.0: Funky face -> $7C:2400 (VRAM tiles $EE/$EF, $FE/$FF)
+for ty in (0, 1):
+    for tx in (0, 1):
+        o = lo_half(0x7C) + 0x2400 + ty * 0x40 + tx * 32
+        rom[o:o + 32] = FT[ty][tx]
 CF = lo_half(0x7C) + 0x2000                     # $7C:2000: tiles $6C-$6F then $7C-$7F
 for ty in (0, 1):
     for T, col in ((CT, 0), (YT, 2)):
@@ -428,6 +459,7 @@ for n, lv in enumerate(_tracked):
     rom[lo_half(0x40) + 0x3900 + n * 2:lo_half(0x40) + 0x3900 + n * 2 + 2] = _w(t)
     lv['total'] = t
 assert _L['K'] <= 0x170 * 8, _L['K']
+assert _L['K'] == 354 * 8 + 3 and len(_tracked) == 33, 'update !GotFull / !GotLast / the K check in hud.asm'
 print('bananas numbered', _L['K'], 'table bytes', _pos, 'levels', len(_tracked))
 _yel = idx_of((248, 232, 64)); _dk = idx_of((120, 72, 16))
 _hud, _ = HT.make(1, 2, _yel, _dk)

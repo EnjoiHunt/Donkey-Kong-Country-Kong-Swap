@@ -1,4 +1,4 @@
-; DKC1 Kong Swap 3.0 — on the overworld, R cycles DK -> Kiddy -> Cranky and L cycles Diddy -> Dixie -> Candy.
+; DKC1 Kong Swap 5.0 — on the overworld, R cycles DK -> Kiddy -> Cranky -> Funky and L cycles Diddy -> Dixie -> Candy (Cranky, Candy and Funky unlock as you play).
 ; Applied with asar on top of the 8 MB ExHiROM image prepared by build_v2.py.
 exhirom
 
@@ -8,6 +8,10 @@ exhirom
 !PalWant   = $7E04C6        ; scratch: palette bits wanted for a map Kong sprite
 !GhostPal  = $403500        ; 3 x 15 colours (DK/Diddy, Kiddy/Dixie, Cranky/Candy)
 !Magic2    = $4343          ; "CC"
+!Magic3    = $4B46          ; "FK" - Funky (DK side, unlocked by a 100% file)
+!TabF      = $780000        ; frame table with Funky entries
+!AltPalettes3 = $403B00     ; copy of $BC:8422-$BC:8511 with Funky in the DK slots
+!FunkyFace = $7C2400        ; Funky face tiles (VRAM tiles $EE/$EF, $FE/$FF)
 !TabC      = $7A0000        ; frame table with Cranky entries
 !TabY      = $7A3000        ; frame table with Candy entries
 !AltPalettes2 = $403600     ; copy of $BC:8422-$BC:8511 with Cranky/Candy palettes
@@ -152,6 +156,8 @@ org $BF84A8
 org $BBB160
 PoundBox:
 	dw $FFF0,$FFFA,$0020,$0018  ; x -16, top 6 px above the feet, 32 wide, 24 tall
+SurfBox:
+	dw $FFE0,$FFC0,$0040,$0044  ; 5.0 Funky's board: x -32, 64 wide, from 64 px above the feet to 4 below
 
 ; Level-complete faces: Kiddy / Dixie get their own map icons
 org $80E2EA : NOP #2          ; world map: always spawn the second Kong (a ghost if absent)
@@ -195,6 +201,7 @@ PoseLo:
 	LDA.l !KFlag
 	CMP.w #!Magic : BEQ .k
 	CMP.w #!Magic2 : BEQ .c
+	CMP.w #!Magic3 : BEQ .f
 .o	LDA.l !PoseTable,x
 	RTL
 .small
@@ -205,6 +212,8 @@ PoseLo:
 .k	LDA.l !TabK,x
 	RTL
 .c	LDA.l !TabC,x
+	RTL
+.f	LDA.l !TabF,x
 	RTL
 .d	LDA.l !TabD,x
 	RTL
@@ -238,6 +247,7 @@ PoseHi:
 	LDA.l !KFlag
 	CMP.w #!Magic : BEQ .k
 	CMP.w #!Magic2 : BEQ .c
+	CMP.w #!Magic3 : BEQ .f
 .o	LDA.l !PoseTable+2,x
 	RTL
 .small
@@ -248,6 +258,8 @@ PoseHi:
 .k	LDA.l !TabK+2,x
 	RTL
 .c	LDA.l !TabC+2,x
+	RTL
+.f	LDA.l !TabF+2,x
 	RTL
 .d	LDA.l !TabD+2,x
 	RTL
@@ -269,6 +281,8 @@ PalLo:
 .dix
 	LDA.l !DFlag
 .chk
+	CMP.w #!Magic3
+	BEQ .fk
 	CMP.w #!Magic2
 	BEQ .cc
 	CMP.w #!Magic
@@ -281,6 +295,11 @@ PalLo:
 	LDA.b $8C
 	CLC
 	ADC.w #(!AltPalettes2&$FFFF)-!KongPalLo
+	BRA .alt
+.fk
+	LDA.b $8C
+	CLC
+	ADC.w #(!AltPalettes3&$FFFF)-!KongPalLo
 .alt
 	STA.w $1A8F,x
 	LDA.w #$0001
@@ -308,7 +327,15 @@ PalBank:
 
 ; Runs every frame for the overworld DK sprite (replaces 14 bytes at $80D199).
 MapHook:
-	JSR KongPalSlot
+	JSR DoneStep                ; 5.0: a finished check says this file isn't 100% -> no Funky
+	BCC +
+	LDA.l !KFlag
+	CMP.w #!Magic3
+	BNE +
+	LDA.w #$0000
+	STA.l !KFlag
+	JSR ForceRedraw
++	JSR KongPalSlot
 	JSR HudFrame
 	LDA.l !PressedButtons
 	BEQ .noPress
@@ -321,23 +348,15 @@ MapHook:
 	BIT.w #$0010              ; R: primary Kong (DK -> Kiddy -> Cranky)
 	BEQ +
 	LDA.l !KFlag
-	JSR NextKong
+	JSR NextKongR
 	STA.l !KFlag
 +	LDA.l !PressedButtons
 	BIT.w #$0020              ; L: secondary Kong (Diddy -> Dixie -> Candy)
 	BEQ +
 	LDA.l !DFlag
-	JSR NextKong
+	JSR NextKongL
 	STA.l !DFlag
-+
-	LDX.w #$0032              ; force every sprite (both map Kongs) to re-upload its frame
-	LDA.w #$0000
--	STA.l !DisplayedPose,x
-	DEX
-	DEX
-	BPL -
-	LDA.w #$0001              ; rewrite the palette below
-	STA.l !MapPalOn
++	JSR ForceRedraw
 .noPress
 	; on a switch, rewrite sprite palette 6 (colours 225-239) right away
 	LDA.l !MapPalOn
@@ -401,7 +420,9 @@ PalBuf0:
 	LDA.l !KFlag
 	BRA ++
 +	LDA.l !DFlag
-++	CMP.w #!Magic2
+++	CMP.w #!Magic3
+	BEQ .fk
+	CMP.w #!Magic2
 	BEQ .cc
 	CMP.w #!Magic
 	BNE .orig
@@ -409,6 +430,9 @@ PalBuf0:
 	RTL
 .cc
 	LDA.l (!AltPalettes2&$FFFFFF)-$0256,x
+	RTL
+.fk
+	LDA.l (!AltPalettes3&$FFFFFF)-$0256,x
 	RTL
 .orig
 	LDA.l $BC81CC,x
@@ -424,7 +448,9 @@ PalBuf2:
 	LDA.l !KFlag
 	BRA ++
 +	LDA.l !DFlag
-++	CMP.w #!Magic2
+++	CMP.w #!Magic3
+	BEQ .fk
+	CMP.w #!Magic2
 	BEQ .cc
 	CMP.w #!Magic
 	BNE .orig
@@ -432,6 +458,9 @@ PalBuf2:
 	RTL
 .cc
 	LDA.l (!AltPalettes2&$FFFFFF)-$0254,x
+	RTL
+.fk
+	LDA.l (!AltPalettes3&$FFFFFF)-$0254,x
 	RTL
 .orig
 	LDA.l $BC81CE,x
@@ -466,6 +495,13 @@ PalPost:                      ; entered by JML with 8-bit A = #$01
 	ASL
 	ASL
 	STA.l !BlkTmp                ; block size in bytes
+	LDA.w #$BDA5                ; 5.0: this block holds Cranky's Cabin colours -> cabin visited
+	SEC
+	SBC.l !BlkSrc
+	CMP.l !BlkTmp
+	BCS +
+	JSR CrankyVisit
++
 	LDY.w #$0000
 .next
 	TYX
@@ -520,6 +556,7 @@ PalPost:                      ; entered by JML with 8-bit A = #$01
 !DixPal = (!AltPalettes&$FFFF)
 !CraPal = (!AltPalettes2&$FFFF)+($849A-$8422)
 !CanPal = (!AltPalettes2&$FFFF)
+!FunPal = (!AltPalettes3&$FFFF)+($849A-$8422)
 BlockTable:
 	dw $B785,!KidPal,0          ; title / intro screen
 	dw $B905,!KidPal,0          ; Funky's Flights
@@ -548,6 +585,13 @@ BlockTable:
 	dw $BDC5,!CanPal,4
 	dw $E247,!CraPal,3
 	dw $E267,!CanPal,4
+	dw $B785,!FunPal,5
+	dw $B905,!FunPal,5
+	dw $BA85,!FunPal,5
+	dw $BBC5,!FunPal,5
+	dw $BC65,!FunPal,5
+	dw $BDA5,!FunPal,5
+	dw $E247,!FunPal,5
 	dw $0000
 
 ; Map Kong sprites (IDs $10 MapDK, $12 MapDiddy, $14 JumpingKong, $1C LeavingKong) use
@@ -588,8 +632,11 @@ KongPalSlot:
 .real
 	PLA
 	JSR KongOf                  ; A = flag value of that side
+	CMP.w #!Magic3
+	BEQ ++
 	CMP.w #!Magic2
 	BNE +
+++
 	LDA.w #$0800                ; palette 4 = Cranky / Candy map colours
 	BRA .apply
 +	CMP.w #!Magic
@@ -631,9 +678,11 @@ GhostSel:                       ; A = 1 DK/Diddy, 2 Kiddy/Dixie, 3 Cranky/Candy 
 	BNE +
 	LDA.w #$0002
 	RTS
-+	CMP.w #!Magic2
++	CMP.w #!Magic3
+	BEQ ++
+	CMP.w #!Magic2
 	BNE +
-	LDA.w #$0003
+++	LDA.w #$0003
 	RTS
 +	LDA.w #$0001
 	RTS
@@ -830,6 +879,7 @@ KongMain:
 	LDA.b $84                   ; 0 = DK slot (Kiddy), 2 = Diddy slot
 	BNE +
 	JSR KiddyPound
+	JSR FunkySurf
 +	LDX.b $84
 	LDA.w $16FD,x
 	RTL
@@ -900,6 +950,109 @@ KiddyPound:
 	STA.l !PoundSit
 .out
 	PLX
+	RTS
+
+; ---- 5.0: Funky's surfboard. Hold Y: twice running speed, enemies in front are knocked out,
+;      and a jump started on the board goes higher than Diddy's.
+!SurfLast  = $7E04CA            ; 1 once this jump has had its board boost
+!SurfSpeed = $0660              ; DK runs at $0300
+!SurfJump  = $07E0              ; DK $0700 (83 px); this gives ~105 px vs Diddy 95 px
+FunkySurf:
+	LDA.l !KFlag
+	CMP.w #!Magic3
+	BEQ +
+	RTS
++	LDA.l $7E056F               ; Funky (DK slot) must be in the lead
+	CMP.w #$0001
+	BEQ +
+	RTS
++	PHX
+	LDX.b !CurIndex
+	LDA.l $7E1029,x
+	PHA
+	LDA.l $7E050E               ; Y held?
+	AND.w #$4000
+	BEQ .done
+	LDA 1,s
+	BEQ .ok
+	CMP.w #$0001 : BEQ .ok
+	CMP.w #$0012 : BEQ .ok
+	CMP.w #$0013 : BEQ .ok
+	BRA .done
+.ok
+	LDA.l $7E050E
+	BIT.w #$0100                ; Right
+	BEQ +
+	LDA.w #!SurfSpeed
+	STA.l $7E0E89,x
+	BRA ++
++	BIT.w #$0200                ; Left
+	BEQ ++
+	LDA.w #-!SurfSpeed
+	STA.l $7E0E89,x
+++	LDA 1,s                     ; jump just started on the board -> higher launch
+	CMP.w #$0001
+	BNE +
+	LDA.l !SurfLast             ; once per jump
+	BNE +
+	LDA.l $7E0EF1,x
+	CMP.w #$0600
+	BCC +
+	CMP.w #$0800
+	BCS +
+	LDA.w #!SurfJump
+	STA.l $7E0EF1,x
+	LDA.w #$0001
+	STA.l !SurfLast
++	LDA.l $7E0E89,x             ; moving fast: ram whatever is in front
+	BPL +
+	EOR.w #$FFFF
+	INC
++	CMP.w #$0280
+	BCC .done
+	JSR SurfHit
+.done
+	PLA
+	CMP.w #$0001                ; reset the once-per-jump flag when not jumping
+	BEQ +
+	LDA.w #$0000
+	STA.l !SurfLast
++	PLX
+	RTS
+
+SurfHit:
+	LDX.b !CurIndex
+	STX.b $B6
+	LDY.w #SurfBox
+	JSL $BBA4E5                 ; build the attack box from SurfBox
+	LDA.w #$0022                ; the classes Rambi's charge hits
+	JSL $BBA58D
+	LDA.w #$0006
+	STA.l !PoundCnt
+.hit
+	BCC .end
+	LDY.b $88
+	CPY.w #$0006                ; never the Kongs themselves
+	BCC .next
+	LDA.w #$0001
+	STA.w $1595,y               ; "you've been hit"
+	LDA.b !CurIndex
+	STA.w $15C9,y
+	LDX.b !CurIndex             ; knocked away in the board's direction, like Rambi does
+	LDA.w $0E89,x
+	ASL
+	STA.w $0E89,y
+	STA.w $0F25,y
+	LDA.l !PoundCnt
+	DEC
+	STA.l !PoundCnt
+	BEQ .end
+.next
+	JSL $BBA594
+	BRA .hit
+.end
+	LDA.w #$0000
+	STA.l !PoundCnt
 	RTS
 
 ; Landing: thud, then hit everything in the box below Kiddy like Rambi's charge does
@@ -1023,7 +1176,13 @@ IconAttr:                       ; A = original attribute, X = level index
 	BEQ .cranky
 	CMP.w #$0008
 	BEQ .candy
+	CMP.w #$0009
+	BEQ .funky
 	PLA
+	BRA .store
+.funky
+	PLA
+	LDA.w #$24EE                ; tile $EE, palette 2
 	BRA .store
 .cranky
 	PLA
@@ -1058,6 +1217,8 @@ WhoBeat:                        ; replaces TYA : LSR : ORA $4C  (Y = lead Kong's
 	BRA .chk
 .big
 	LDA.l !KFlag
+	CMP.w #!Magic3
+	BEQ .fk
 .chk
 	CMP.w #!Magic2
 	BEQ .cc
@@ -1072,6 +1233,11 @@ WhoBeat:                        ; replaces TYA : LSR : ORA $4C  (Y = lead Kong's
 	PLA
 	CLC
 	ADC.w #$0006                ; 1 -> 7 (Cranky), 2 -> 8 (Candy)
+	ORA.b $4C
+	RTL
+.fk
+	PLA
+	LDA.w #$0009                ; 9 = Funky
 	ORA.b $4C
 	RTL
 .plain
@@ -1163,9 +1329,16 @@ AnyFlag:                        ; Z clear if Kiddy or Dixie is selected
 	LDA.w #$0001
 	RTS
 
-FlagFor:                        ; A = 0 Kiddy, 1 Dixie, 2 Kiddy or Dixie, 3 Cranky, 4 Candy. Z clear if selected.
+FlagFor:                        ; A = 0 Kiddy, 1 Dixie, 2 Kiddy or Dixie, 3 Cranky, 4 Candy, 5 Funky. Z clear if selected.
 	CMP.w #$0002
 	BEQ AnyFlag
+	CMP.w #$0005
+	BNE +
+	LDA.l !KFlag
+	CMP.w #!Magic3
+	BEQ .yes
+	BRA .no
++
 	CMP.w #$0003
 	BEQ .c
 	CMP.w #$0004
@@ -1205,18 +1378,108 @@ PoseSide:                       ; A = pose offset. Returns 0 for DK-side poses, 
 	LDA.w #$0000
 	RTS
 
-NextKong:                       ; 0 -> !Magic -> !Magic2 -> 0
+NextKongR:                      ; R: 0 -> Kiddy -> Cranky (every cabin visited) -> Funky (100% file) -> 0
 	CMP.w #!Magic
-	BEQ .two
+	BEQ .afterK
+	CMP.w #!Magic2
+	BEQ .afterC
+	CMP.w #!Magic3
+	BEQ .zero
+	LDA.w #!Magic
+	RTS
+.afterK
+	JSR CrankyOK
+	BEQ .afterC
+	LDA.w #!Magic2
+	RTS
+.afterC
+	JSR AllDone
+	BEQ .zero
+	LDA.w #!Magic3
+	RTS
+.zero
+	LDA.w #$0000
+	RTS
+
+NextKongL:                      ; L: 0 -> Dixie -> Candy (saved at every Save Point) -> 0
+	CMP.w #!Magic
+	BEQ .afterD
 	CMP.w #!Magic2
 	BEQ .zero
 	LDA.w #!Magic
 	RTS
-.two
+.afterD
+	JSR CandyOK
+	BEQ .zero
 	LDA.w #!Magic2
 	RTS
 .zero
 	LDA.w #$0000
+	RTS
+
+CrankyOK:                       ; Z clear if all six Cranky's Cabins have been visited
+	LDA.l !ShopB
+	AND.w #$003F
+	CMP.w #$003F
+	BEQ +
+	LDA.w #$0000
+	RTS
++	LDA.w #$0001
+	RTS
+
+CandyOK:                        ; Z clear if the game was saved at all six Candy's Save Points
+	LDA.l !ShopB
+	AND.w #$3F00
+	CMP.w #$3F00
+	BEQ +
+	LDA.w #$0000
+	RTS
++	LDA.w #$0001
+	RTS
+
+ValidateFlags:                  ; after loading / starting a file: drop Kongs this file hasn't unlocked
+	PHP
+	REP #$30
+	LDA.l !KFlag
+	CMP.w #!Magic2
+	BNE +
+	JSR CrankyOK
+	BNE +
+	LDA.w #$0000
+	STA.l !KFlag
++	LDA.l !DFlag
+	CMP.w #!Magic2
+	BNE +
+	JSR CandyOK
+	BNE +
+	LDA.w #$0000
+	STA.l !DFlag
++	PLP
+	RTS
+
+CrankyVisit:                    ; Cranky's Cabin palettes are being loaded: mark this world's cabin
+	LDA.l $7E003E
+	AND.w #$00FF
+	SEC
+	SBC.w #$00EE                ; $EE-$F3 = the six cabins
+	CMP.w #$0006
+	BCS +
+	TAX
+	LDA.l BitMask,x
+	AND.w #$00FF
+	ORA.l !ShopB
+	STA.l !ShopB
++	RTS
+
+ForceRedraw:
+	LDX.w #$0032              ; force every sprite (both map Kongs) to re-upload its frame
+	LDA.w #$0000
+-	STA.l !DisplayedPose,x
+	DEX
+	DEX
+	BPL -
+	LDA.w #$0001              ; rewrite the palette
+	STA.l !MapPalOn
 	RTS
 
 KongOf:                         ; A = 0 big side, 1 small side -> A = that side's flag
@@ -1238,6 +1501,8 @@ CCMapPalette:                   ; sprite palette 4 = Cranky/Candy map colours, o
 	REP #$20
 	LDA.l !KFlag
 	CMP.w #!Magic2
+	BEQ .cc
+	CMP.w #!Magic3
 	BEQ .cc
 	LDA.l !DFlag
 	CMP.w #!Magic2
@@ -1294,6 +1559,20 @@ IconDMA:                        ; runs in NMI right after the icon frame is sent
 	LDA.w #!HudTiles&$FFFF
 	LDX.w #!HudTiles>>16
 	LDY.w #13*32
+	JSL $B999AD
+	REP #$30
+	LDA.w #$0EE0                ; 5.0: Funky face, tiles $EE/$EF
+	STA.l $002116
+	LDA.w #!FunkyFace&$FFFF
+	LDX.w #!FunkyFace>>16
+	LDY.w #$0040
+	JSL $B999AD
+	REP #$30
+	LDA.w #$0FE0                ; tiles $FE/$FF
+	STA.l $002116
+	LDA.w #(!FunkyFace+$40)&$FFFF
+	LDX.w #!FunkyFace>>16
+	LDY.w #$0040
 	JSL $B999AD
 	REP #$30
 	RTL

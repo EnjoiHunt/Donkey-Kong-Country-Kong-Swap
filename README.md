@@ -27,7 +27,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v1.0.bps`](patches/dkc1_kong_swap_v1.0.bps) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v1.0.bps`](patches/dkc1_kong_swap_v1.0.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v1.0.ips`](patches/dkc1_kong_swap_v1.0.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
 The patched ROM is 8 MB (ExHiROM).
@@ -54,7 +54,7 @@ Then run:
 python3 tools/build.py
 ```
 
-This writes `build/dkc1_kong_swap.sfc` and `build/dkc1_kong_swap.bps`. The build is deterministic, so with the correct ROMs it reproduces the released patch byte for byte. You can also point to the ROMs with the `DKC1_ROM`, `DKC2_ROM` and `DKC3_ROM` environment variables.
+This writes `build/dkc1_kong_swap.sfc`, `build/dkc1_kong_swap.bps` and `build/dkc1_kong_swap.ips`. The build is deterministic, so with the correct ROMs it reproduces the released patch byte for byte. You can also point to the ROMs with the `DKC1_ROM`, `DKC2_ROM` and `DKC3_ROM` environment variables.
 
 ### How it works
 

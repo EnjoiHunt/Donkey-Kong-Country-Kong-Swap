@@ -324,4 +324,5 @@ print('frames', len(placed), 'bytes used', used, 'map shift', MAP_SHIFT, DIX_MAP
 import patches as P
 _src = open(CFG.DKC1_ROM, 'rb').read(); _dst = open(OUT, 'rb').read()
 open(os.path.join(CFG.BUILD, 'dkc1_kong_swap.bps'), 'wb').write(P.make_bps(_src, _dst))
-print('wrote', OUT, 'and', os.path.join(CFG.BUILD, 'dkc1_kong_swap.bps'))
+open(os.path.join(CFG.BUILD, 'dkc1_kong_swap.ips'), 'wb').write(P.make_ips(_src, _dst))
+print('wrote', OUT, 'plus dkc1_kong_swap.bps and dkc1_kong_swap.ips in', CFG.BUILD)

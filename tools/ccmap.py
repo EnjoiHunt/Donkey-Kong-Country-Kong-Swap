@@ -72,7 +72,7 @@ CY_GROUPS = {
     'Fall': [P['fall0'], P['fall1']], 'Land': [KISS[7]], 'Roll': KISS, 'Hurt': SWOON,
     'TooCloseToEdge': SWOON[:6], 'Bounce': [P['jump0'], P['jump1']], 'Victory': KISS,
     'Failure': SWOON, 'Swimming': pp('swim', 4), 'Pickup': KISS[6:9], 'HoldWalk': pp('carrywalk', 8),
-    'Throw': [P['throw']], 'ScratchHead': STAND, 'Duck': [KISS[7]], 'Crawling': CRAWL,
+    'Throw': [P['throw']], 'ScratchHead': STAND, 'Duck': [KISS[i] for i in (0, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13)], 'Crawling': CRAWL,
     'EnterCrawlSpace': CRAWL[:2], 'HangOnVerticalRope': [P['hang0']], 'TurnOnVerticalRope': [P['hang1']],
     'ClimbUpSingleVerticalRope': [P['hang0'], P['hang1']], 'RideSteelKeg': pp('run', 8),
     'SwingOnRope': [P['hang0'], P['hang1']], 'DiddyTakesLead': KISS, 'DonkeyTakesLead': [P['jump0']],
@@ -122,6 +122,7 @@ def build(groups, prefix, ref_feet_y, ref_feet_x, cart_lift=0, scale=None):
     cache = {}
     def sc(r):
         if scale is None: return r
+        if id(r) in PRESCALED: return PRESCALED[id(r)]
         if id(r) not in cache: cache[id(r)] = small_box(r, scale, 64, 24)
         return cache[id(r)]
     for grp, srcs in groups.items():
@@ -152,6 +153,8 @@ dk_x = statistics.median(feet_x(raster(R1, NAMES[i][1])) for i in g1['DonkeyKong
 dd_y = statistics.median(feet_row(raster(R1, NAMES[i][1])) for i in g1['Diddy_Walk'] + g1['Diddy_IdleSway'])
 dd_x = statistics.median(feet_x(raster(R1, NAMES[i][1])) for i in g1['Diddy_Walk'] + g1['Diddy_IdleSway'])
 ASSIGN_C = build(CR_GROUPS, 'DonkeyKong_', dk_y, dk_x, 6)
+import candy_eyes
+PRESCALED = dict(zip(map(id, KISS), candy_eyes.fix([small_box(k, 2 / 3, 64, 24) for k in KISS])))   # open eyes
 ASSIGN_Y = build(CY_GROUPS, 'Diddy_', dd_y, dd_x, 10, scale=2 / 3)   # Candy at 2/3 size
 
 # ---------------------------------------------------------------- world map (small)

@@ -7,7 +7,7 @@ Layout (8 MB ExHiROM):
                      lower halves ($xx:0000-7FFF) hold the new data:
      $40:0000  alternate pose table      $40:3000  alternate Kong palettes
      $40:3100  map Kiddy palette          $40:4000  hook code (asar)
-     $41-$5F:0000-7FFF  Kiddy/Dixie frames
+     $41-$7B:0000-7FFF  Kiddy/Dixie/Cranky/Candy frames ($7A: Cranky & Candy frame tables)
 """
 import sys, json, subprocess, statistics
 import os, sys
@@ -53,7 +53,7 @@ alt = bytearray(R1[POSE:POSE + POSE_LEN])
 T0 = lo_half(0x40)
 
 # --- place frames --------------------------------------------------------------
-free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C)]
+free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b != 0x7A]   # $7A: Cranky/Candy tables
 placed = {}
 def put(data):
     for ext in free:
@@ -151,7 +151,8 @@ _dkp = K.read_pal(R1, 0x3C849A); _kp = K.read_pal(R3, 0x3D34CF)
 def _rgb(v): return ((v & 31) << 3, ((v >> 5) & 31) << 3, ((v >> 10) & 31) << 3)
 def _d2(a, b): return sum((x - y) ** 2 for x, y in zip(a, b))
 BAL_MAP = [0] + [1 + min(range(15), key=lambda j: _d2(_rgb(_dkp[i - 1]), _rgb(_kp[j]))) for i in range(1, 16)]
-def recolor(off):
+def recolor(off, MAPV=None):
+    MAPV = MAPV or BAL_MAP
     f = parse(R1, off); b = bytearray(R1[off:off + f['size']]); p = f['data'] - off
     for t in range(f['d1n'] + f['d2n']):
         tb = b[p + t * 32:p + t * 32 + 32]; out = bytearray(32)
@@ -159,7 +160,7 @@ def recolor(off):
             for x in range(8):
                 sh = 7 - x
                 v = ((tb[y*2] >> sh) & 1) | (((tb[y*2+1] >> sh) & 1) << 1) | (((tb[16+y*2] >> sh) & 1) << 2) | (((tb[16+y*2+1] >> sh) & 1) << 3)
-                v = BAL_MAP[v]
+                v = MAPV[v]
                 for bit, o in ((0, 0), (1, 1), (2, 16), (3, 17)):
                     if v >> bit & 1: out[y*2+o] |= 1 << sh
         b[p + t * 32:p + t * 32 + 32] = out
@@ -212,6 +213,57 @@ for p in range(0, POSE_LEN, 4):
 rom[lo_half(0x7D):lo_half(0x7D) + POSE_LEN] = altK
 rom[lo_half(0x7D) + 0x3000:lo_half(0x7D) + 0x3000 + POSE_LEN] = altD
 
+# --- 3.0: Cranky (DK side) and Candy (Diddy side) -------------------------------------
+import ccmap as CM, enc as CE
+CRA_PAL = K.read_pal(R1, 0x3C9016); CAN_PAL = K.read_pal(R1, 0x3C8FF8)
+def _merge_pal(sets):
+    # sets: [(raster list, 15-colour palette)] -> merged 15 colours + per-set index maps
+    from collections import Counter
+    cnt = Counter()
+    for rs, p in sets:
+        for r in rs:
+            for v, n in zip(*np.unique(r[r > 0], return_counts=True)):
+                cnt[_rgb(p[v - 1])] += int(n)
+    cols = list(cnt)
+    dark = min(cols, key=lambda c: sum(c))
+    rest = [c for c in cols if c != dark]
+    cent = sorted(rest, key=lambda c: -cnt[c])[:14]
+    for _ in range(25):
+        groups = [[] for _ in cent]
+        for c in rest:
+            groups[min(range(len(cent)), key=lambda i: _d2(c, cent[i]))].append(c)
+        cent = [tuple(sum(v[k] * cnt[v] for v in g) // sum(cnt[v] for v in g) for k in range(3)) if g else cent[i]
+                for i, g in enumerate(groups)]
+    cent = [dark] + cent + [dark] * (14 - len(cent))
+    maps = []
+    for rs, p in sets:
+        maps.append([0] + [1 + min(range(15), key=lambda j: _d2(_rgb(p[i]), cent[j])) for i in range(15)])
+    pal = [(c[0] >> 3) | ((c[1] >> 3) << 5) | ((c[2] >> 3) << 10) for c in cent]
+    return pal, maps
+CC_MAP_PAL, (MC_MAP, MY_MAP) = _merge_pal([(list(CM.MAP_C.values()), CRA_PAL), (list(CM.MAP_Y.values()), CAN_PAL)])
+def _remap(r, m):
+    lut = np.array(m, dtype=np.uint8); return lut[r]
+gen_cache = {}
+def put_raster(r):
+    data = CE.encode(r)
+    if data not in gen_cache:
+        gen_cache[data] = put(data)
+    a = snes(gen_cache[data]); return bytes([a & 255, (a >> 8) & 255, a >> 16, 0])
+altC, altY = bytearray(orig), bytearray(orig)
+for i, r in CM.ASSIGN_C.items():
+    e = (0x3BCD28 + i * 4) - POSE; altC[e:e + 4] = put_raster(r)
+for i, r in CM.ASSIGN_Y.items():
+    e = (0x3BCD28 + i * 4) - POSE; altY[e:e + 4] = put_raster(r)
+for p, r in CM.MAP_C.items(): altC[p:p + 4] = put_raster(_remap(r, MC_MAP))
+for p, r in CM.MAP_Y.items(): altY[p:p + 4] = put_raster(_remap(r, MY_MAP))
+_BAL_C = [0] + [1 + min(range(15), key=lambda j: _d2(_rgb(_dkp[i - 1]), _rgb(CRA_PAL[j]))) for i in range(1, 16)]
+for i in g1['HUDBalloon_Idle']:
+    d = recolor(NAMES[i][1], _BAL_C); o = put(d); a = snes(o)
+    e = (0x3BCD28 + i * 4) - POSE; altC[e:e + 4] = bytes([a & 255, (a >> 8) & 255, a >> 16, 0])
+rom[lo_half(0x7A):lo_half(0x7A) + POSE_LEN] = altC
+rom[lo_half(0x7A) + 0x3000:lo_half(0x7A) + 0x3000 + POSE_LEN] = altY
+print('cranky/candy frames', len(gen_cache))
+
 # Kiddy's ground-pound slam frames (his DKC3 roll / somersault), pointer table at $40:3300
 POUND = K.kiddy_groups()['Roll'] if hasattr(K, 'kiddy_groups') else None
 from common import kiddy_groups as _kg
@@ -260,13 +312,29 @@ def ghost(p):
 dkmap = [R1[0x39BFC5 + 2 * i] | R1[0x39BFC6 + 2 * i] << 8 for i in range(15)]
 write_pal(lo_half(0x40) + 0x3500, ghost(dkmap))        # ghost of DK / Diddy
 write_pal(lo_half(0x40) + 0x351E, ghost(mp))           # ghost of Kiddy / Dixie
+write_pal(lo_half(0x40) + 0x353C, ghost(CC_MAP_PAL))   # ghost of Cranky / Candy
+write_pal(lo_half(0x40) + 0x3700, CC_MAP_PAL)          # map sprite palette 4
+P2 = lo_half(0x40) + 0x3600
+rom[P2:P2 + 0xF0] = R1[0x3C8422:0x3C8512]
+for base, p in ((0x849A, CRA_PAL), (0x8422, CAN_PAL)):
+    o = P2 + base - 0x8422
+    write_pal(o, p); write_pal(o + 0x1E, K.inactive(p)); write_pal(o + 0x3C, p); write_pal(o + 0x5A, K.inactive(p))
 
 
 # --- level-complete face icons (Kiddy / Dixie) -------------------------------------
 import faces as FC
 kr, km = FC.kiddy2(20, 0, 24, 22, 15, 0, 1); km[15, 0] = False
 dr_, dm = FC.dixie2(4, 0, 26, 24, 15, 1, 0)
-cols = [tuple(int(c) for c in kr[y, x]) for y in range(16) for x in range(16) if km[y, x]] + \
+def _cc_face(name, box, p15, n=15, ox=0, oy=0):
+    pal16 = [(0, 0, 0)] + [_rgb(v) for v in p15]
+    x0, y0, w, h = box
+    sub = raster(R1, dict(CM.FR)[name])[y0:y0 + h, x0:x0 + w]
+    return FC.to_rgb(FC.fit(FC.shrink(sub, pal16, n), 16, ox, oy), pal16)
+cr_, cm_ = _cc_face('CrankyKong_WindPhonograph1', (120, 91, 18, 18), CRA_PAL, 15, 0, 1)
+cy_, cym = _cc_face('CandyKong_Stand1', (117, 52, 26, 24), CAN_PAL, 15, 1, 0)
+cols = [tuple(int(c) for c in cr_[y, x]) for y in range(16) for x in range(16) if cm_[y, x]] + \
+       [tuple(int(c) for c in cy_[y, x]) for y in range(16) for x in range(16) if cym[y, x]] + \
+       [tuple(int(c) for c in kr[y, x]) for y in range(16) for x in range(16) if km[y, x]] + \
        [tuple(int(c) for c in dr_[y, x]) for y in range(16) for x in range(16) if dm[y, x]]
 def near(c, p): return sum((a - b) ** 2 for a, b in zip(c, p))
 WHITE, BLACK = (248, 248, 248), (0, 0, 0)
@@ -299,6 +367,13 @@ def tiles16(rgb, m):
         t.append(row)
     return t
 KT, DT = tiles16(kr, km), tiles16(dr_, dm)
+CT, YT = tiles16(cr_, cm_), tiles16(cy_, cym)
+CF = lo_half(0x7C) + 0x2000                     # $7C:2000: tiles $6C-$6F then $7C-$7F
+for ty in (0, 1):
+    for T, col in ((CT, 0), (YT, 2)):
+        for tx in (0, 1):
+            o = CF + ty * 0x80 + (col + tx) * 32
+            rom[o:o + 32] = T[ty][tx]
 FR = 0x7C0000
 for f in range(8):
     base = FR + f * 0x400

@@ -1,8 +1,10 @@
-; ---------------------------------------------------------------- 4.x: level stats on the world map
+; ---------------------------------------------------------------- 4.x / 5.1: level stats on the world map
 ; Every banana (each single in a formation, each banana bunch) has a global number k.
-; Collected bananas are remembered per save file and don't come back: the live bitmap sits in
-; expanded SRAM at $B0:7000 (the cartridge is now 8 KB SRAM), each file's saved copy at
-; $B0:6800 + file*$180. K-O-N-G completion bits stay in the unused tail of the game's save slot.
+; 5.1: the "collected" bitmap (expanded SRAM $B0:7000; the cartridge is now 8 KB SRAM) only covers
+; the current visit to a level: it is wiped for that level when you enter it from the map, so every
+; banana is back, but it survives losing a life, so bananas you got before dying stay got.
+; Each level keeps its best visit (bananas, bunch = 10) and the K-O-N-G letters ever found there,
+; saved per file at $B0:7400 + file*$100.
 !HudN      = 36
 !HudIdx    = $403800             ; 256 bytes: entrance -> level index or $FF
 !HudTotal  = $403900             ; level index -> total bananas (bunch = 10)
@@ -11,16 +13,26 @@
 !BunchTab  = $790200             ; entrance -> offset of [N, N x k-or-$FFFF] (sprite list entries)
 !RangeTab  = $790400             ; level index -> offset of [n, n x (k, count, weight)]
 !Got       = $B07000             ; live "collected" bitmap (K bits)
-!FileArea  = $B06800             ; + file*$180: saved bitmap, magic word at +$17E
+!FileArea  = $B06800             ; + file*$180: 4.3 / 5.0 saved bitmap, magic word at +$17E (read when converting)
 !GotBytes  = $0170
 !FileMagic = $4247               ; "GB"
-!KongB     = $7E049C             ; 5 bytes of bits
+!RunCount  = $7E049C             ; 5.1: bananas collected on this visit (bunch = 10)
+!PlayIdx   = $7E049E             ; level index of this visit ($FFFF: not a tracked level)
+!FromMap   = $7E04A0             ; !FromMagic while the map runs: the next level load is a new visit
+!FromMagic = $4D46
+!PosY      = $7E04B0
+!Died      = $7E04B2             ; 1 once a life was lost on this visit
+!LastLives = $7E04B4             ; lives seen on the last level / map frame
+!RunLet    = $7E04BC             ; the game's K-O-N-G state ($7E:057F) on this visit
+!LetBack   = $7E04BE             ; 1: put !RunLet back on the first level frame (visit goes on)
+!Best      = $B07200             ; 64 words: best visit per level index
+!Lett      = $B07280             ; 64 bytes: K-O-N-G letters found per level index (bits 0-3)
+!StatArea  = $B07400             ; + file*$100: saved copy of $B0:7200-$72FF, magic at +$FE
+!StatAMagic = $4C42              ; "BL"
 !HudTmp    = $7E04A6             ; scratch (5 words)
 !HudFrameNo = $7E04B6
 !SlotPtr   = $7E04B8
 !CurLid    = $7E04BA             ; level id of the formations currently loaded
-!CacheEnt  = $7E04BC             ; entrance the HUD numbers were computed for (+1, 0 = none)
-!CacheGot  = $7E04BE             ; bananas collected in that level
 !StatMagic = $3353             ; "S3" (5.0 layout: K-O-N-G bits, then cabin / save-point bits)
 !Stat2Magic = $3253            ; "S2" (4.3 layout: K-O-N-G bits only)
 !ShopB     = $7E04A2             ; lo: Cranky's Cabins visited, hi: Candy's Save Points saved at
@@ -75,13 +87,146 @@ GotSet:                            ; A = k
 	ORA.l !Got,x
 	STA.l !Got,x
 	REP #$20
+	RTS
+
+RunAdd:                            ; A = weight: count it towards this visit
+	CLC
+	ADC.l !RunCount
+	STA.l !RunCount
+	RTS
+
+; ---- 5.1: a new visit to a level ------------------------------------------------------------
+EnterLevel:                        ; first level load after the map: bring every banana back
+	PHP
+	REP #$30
+	PHX
+	PHY
+	LDA.l !FromMap
+	CMP.w #!FromMagic
+	BNE .out
 	LDA.w #$0000
-	STA.l !CacheEnt                ; numbers changed
+	STA.l !FromMap
+	LDA.l $7E003E
+	AND.w #$00FF
+	TAX
+	LDA.l $BCBABA,x                ; the level's main entrance
+	JSR LevelIndex
+	BCC +
+	LDX.w #$FFFF
++	LDA.l !Died                    ; back after losing a life in this same level:
+	BEQ .new                       ; the visit goes on (checkpoint), bananas stay got
+	TXA
+	CMP.l !PlayIdx
+	BEQ .same
+.new
+	TXA
+	STA.l !PlayIdx
+	LDA.w #$0000
+	STA.l !RunCount
+	STA.l !RunLet
+	STA.l !LetBack
+	LDA.l !PlayIdx
+	CMP.w #64
+	BCS .clr
+	JSR ClearLevelBits
+	BRA .clr
+.same
+	LDA.w #$0001                   ; the letters found before losing the life stay found
+	STA.l !LetBack
+.clr
+	LDA.w #$0000
+	STA.l !Died
+.out
+	PLY
+	PLX
+	PLP
+	RTS
+
+ClearLevelBits:                    ; forget the bananas of level !PlayIdx
+	LDA.l !PlayIdx
+	ASL
+	TAX
+	LDA.l !RangeTab,x
+	TAX
+	LDA.l $790000,x
+	AND.w #$00FF
+	STA.l !HudTmp+2               ; ranges left
+	INX
+-	LDA.l !HudTmp+2
+	BEQ .done
+	DEC
+	STA.l !HudTmp+2
+	LDA.l $790000,x               ; k
+	STA.l !HudTmp+6
+	LDA.l $790002,x               ; count
+	STA.l !HudTmp+8
+	PHX
+--	LDA.l !HudTmp+8
+	BEQ +
+	DEC
+	STA.l !HudTmp+8
+	LDA.l !HudTmp+6
+	INC
+	STA.l !HudTmp+6
+	DEC
+	JSR GotAddr
+	EOR.w #$FFFF
+	SEP #$20
+	AND.l !Got,x
+	STA.l !Got,x
+	REP #$20
+	BRA --
++	PLX
+	INX
+	INX
+	INX
+	INX
+	INX
+	INX
+	BRA -
+.done
+	RTS
+
+LevelTick:                         ; every Kong frame in a level: remember the K-O-N-G letters found
+	PHP
+	REP #$30
+	PHX
+	JSR LifeCheck
+	LDA.l !LetBack
+	BEQ +
+	LDA.w #$0000
+	STA.l !LetBack
+	LDA.l !RunLet
+	SEP #$20
+	STA.l $7E057F
+	REP #$20
++	LDA.l $7E057F
+	AND.w #$00FF
+	BEQ +
+	STA.l !RunLet
++	LDA.l !PlayIdx
+	CMP.w #64
+	BCS .out
+	TAX
+	LDA.l $7E057F
+	BIT.w #$0010                  ; the game's "all four found" state
+	BEQ +
+	LDA.w #$000F
++	AND.w #$000F
+	BEQ .out
+	SEP #$20
+	ORA.l !Lett,x
+	STA.l !Lett,x
+	REP #$20
+.out
+	PLX
+	PLP
 	RTS
 
 ; ---- level start: hide bananas already collected --------------------------------------
 FormLoad:
 	JSL $B8B580
+	JSR EnterLevel                ; 5.1
 	PHP
 	REP #$30
 	PHX
@@ -195,7 +340,12 @@ Pick:
 	AND.l !HudTmp+6
 	BEQ ++
 	LDA.l !HudTmp+4
+	JSR GotTest
+	BNE ++                        ; already counted on this visit
+	LDA.l !HudTmp+4
 	JSR GotSet
+	LDA.w #1
+	JSR RunAdd
 ++	LDA.l !HudTmp+4
 	INC
 	STA.l !HudTmp+4
@@ -270,7 +420,13 @@ BunchGot:
 	TAX
 	JSR BunchK
 	BCS +
+	PHA
+	JSR GotTest
+	PLA
+	BNE +                         ; already counted on this visit
 	JSR GotSet
+	LDA.w #10
+	JSR RunAdd
 +	PLY
 	PLX
 	PLP
@@ -324,11 +480,10 @@ LevelDone:
 	AND.w #$000F
 	CMP.w #$000F
 	BNE .out
-+	TXA
-	JSR KBitAddr
-	SEP #$20
-	ORA.l !KongB,x
-	STA.l !KongB,x
++	SEP #$20
+	LDA.l !Lett,x
+	ORA.b #$0F
+	STA.l !Lett,x
 	REP #$20
 .out
 	PLA
@@ -383,54 +538,18 @@ DoneReset:                         ; a file was loaded / started: begin a fresh 
 	STA.l !DoneAcc
 	RTS
 
-!GotFull = 354                     ; bananas are numbered 0-2834: 354 full bytes ...
-!GotLast = $07                     ; ... and 3 bits of the next one (build_v2.py asserts this)
-
 DoneStep:                          ; carry set if a pass just finished and the file is NOT 100%
 	PHX
 	LDA.l !DoneIdx
-	CMP.w #!GotFull
-	BCS .tail
+	CMP.w #64
+	BCC +
+	LDA.w #$0000
+	STA.l !DoneIdx
++	ASL
 	TAX
-	CLC
-	ADC.w #16                     ; 16 bytes of the collected-banana bitmap per frame
-	STA.l !DoneIdx
--	LDA.l !Got,x
-	CMP.w #$FFFF
-	BNE .bad
-	INX
-	INX
-	TXA
-	CMP.w #!GotFull
-	BCS .clc
-	CMP.l !DoneIdx
-	BCC -
-	BRA .clc
-.bad
-	LDA.w #$0000
-	STA.l !DoneAcc
-	LDA.w #!GotFull               ; no need to look further this pass
-	STA.l !DoneIdx
-	BRA .clc
-.tail
-	LDA.l !Got+!GotFull
-	AND.w #!GotLast
-	CMP.w #!GotLast
-	BNE .no
-	LDA.l !KongB                  ; K-O-N-G in all 33 levels
-	CMP.w #$FFFF
-	BNE .no
-	LDA.l !KongB+2
-	CMP.w #$FFFF
-	BNE .no
-	LDA.l !KongB+4
-	AND.w #$0001
-	BNE .end
-.no
-	LDA.w #$0000
-	STA.l !DoneAcc
-.end
-	LDA.l !DoneAcc
+	LDA.l !HudTotal,x
+	BNE .check
+	LDA.l !DoneAcc                 ; end of the pass
 	STA.l !AllOK
 	LDA.w #!OkMagic
 	STA.l !DoneAcc
@@ -442,8 +561,34 @@ DoneStep:                          ; carry set if a pass just finished and the f
 	PLX
 	SEC
 	RTS
+.check
+	JSR LevelFull
+	BCS .next
+	LDA.w #$0000
+	STA.l !DoneAcc
+.next
+	LDA.l !DoneIdx
+	INC
+	STA.l !DoneIdx
 .clc
 	PLX
+	CLC
+	RTS
+
+LevelFull:                         ; X = level index * 2 -> carry set if 100% (best visit has every
+	LDA.l !Best,x                 ; banana, and all four K-O-N-G letters have been found)
+	CMP.l !HudTotal,x
+	BCC .no
+	TXA
+	LSR
+	TAX
+	LDA.l !Lett,x
+	AND.w #$000F
+	CMP.w #$000F
+	BNE .no
+	SEC
+	RTS
+.no
 	CLC
 	RTS
 
@@ -500,11 +645,35 @@ LevelGot:                          ; X = level index -> A = bananas collected th
 ; ---- the world map ------------------------------------------------------------------------
 !OamPtr = !HudTmp+8
 !PosX   = !HudTmp+2
+LifeCheck:                         ; a life lost (seen in the level or on the map) -> !Died
+	LDA.l $7E0575
+	AND.w #$00FF
+	CMP.l !LastLives
+	STA.l !LastLives
+	BCS +
+	LDA.w #$0001
+	STA.l !Died
++	RTS
+
 HudFrame:
 	PHP
 	REP #$30
+	PHX
+	JSR LifeCheck
 	LDA.l $7E0028
 	STA.l !HudFrameNo             ; the map was active this frame
+	LDA.w #!FromMagic             ; 5.1: the next level load is a new visit
+	STA.l !FromMap
+	LDA.l !PlayIdx                ; and the last visit counts towards that level's best
+	CMP.w #64
+	BCS +
+	ASL
+	TAX
+	LDA.l !RunCount
+	CMP.l !Best,x
+	BCC +
+	STA.l !Best,x
++	PLX
 	PLP
 	RTS
 
@@ -523,37 +692,19 @@ HudDraw:                           ; end of every frame: draw the stats if the m
 	JMP .out
 +	TXA
 	STA.l !HudTmp                 ; level index
-	LDA.l $7E003E
-	AND.w #$00FF
-	INC
-	CMP.l !CacheEnt
-	BEQ +
-	STA.l !CacheEnt
-	LDA.l !HudTmp
-	TAX
-	JSR LevelGot
-	STA.l !CacheGot
-	LDA.l $7E003E
-	JSR LevelIndex
-	TXA
-	STA.l !HudTmp
-+	LDA.l $7E008E                 ; OAM write pointer
-	CMP.w #$0400-(4*10)
+	LDA.l $7E008E                 ; OAM write pointer
+	CMP.w #$0400-(4*12)
 	BCC +
 	JMP .out
 +	STA.l !OamPtr
-	LDA.l !HudTmp                 ; K icon if all letters were found
-	JSR KBitAddr
-	SEP #$20
-	AND.l !KongB,x
-	REP #$20
-	BEQ +
+	LDA.w #6 : STA.l !PosY
 	LDA.w #8 : STA.l !PosX
-	LDA.w #$EC : JSR PutTile
-+	LDA.w #20 : STA.l !PosX
 	LDA.w #$EB : JSR PutTile      ; banana
-	LDA.w #30 : STA.l !PosX
-	LDA.l !CacheGot
+	LDA.w #18 : STA.l !PosX
+	LDA.l !HudTmp
+	ASL
+	TAX
+	LDA.l !Best,x                 ; best visit
 	JSR PutNum
 	LDA.w #$EA : JSR PutTile      ; '/'
 	LDA.l !HudTmp
@@ -561,6 +712,20 @@ HudDraw:                           ; end of every frame: draw the stats if the m
 	TAX
 	LDA.l !HudTotal,x
 	JSR PutNum
+	LDA.w #16 : STA.l !PosY       ; K O N G found here (missing ones left blank)
+	LDA.l !HudTmp
+	TAX
+	LDA.l !Lett,x
+	STA.l !HudTmp+4
+	LDA.w #8 : STA.l !PosX
+	LDA.l !HudTmp+4 : AND.w #1 : BEQ + : LDA.w #$EC : JSR PutTile
++	LDA.w #16 : STA.l !PosX
+	LDA.l !HudTmp+4 : AND.w #2 : BEQ + : LDA.w #$ED : JSR PutTile
++	LDA.w #24 : STA.l !PosX
+	LDA.l !HudTmp+4 : AND.w #4 : BEQ + : LDA.w #$F2 : JSR PutTile
++	LDA.w #32 : STA.l !PosX
+	LDA.l !HudTmp+4 : AND.w #8 : BEQ + : LDA.w #$F3 : JSR PutTile
++
 	LDA.l !OamPtr
 	STA.l $7E008E
 .out
@@ -579,7 +744,7 @@ PutTile:                           ; A = tile; one 8x8 OAM entry at !OamPtr, x =
 	LDA.l !PosX
 	SEP #$20
 	STA.l $7E0000,x
-	LDA.b #6
+	LDA.l !PosY
 	STA.l $7E0001,x
 	PLA
 	STA.l $7E0002,x
@@ -628,11 +793,11 @@ PutNum:                            ; A = value 0-9999, no leading zeros
 	JSR PutTile
 ++	RTS
 
-HudLevelFrame:
-	RTS
+HudLevelFrame:                     ; every Kong frame in a level (from KongMain)
+	JMP LevelTick
 
 ; ---- saving ----------------------------------------------------------------------------------
-FileOff:                           ; -> X = file * $180
+FileOff:                           ; -> X = file * $180 (4.3 / 5.0 collected-banana bitmaps)
 	LDA.l $7E0581
 	AND.w #$0003
 	TAX
@@ -643,6 +808,13 @@ FileOff:                           ; -> X = file * $180
 	ADC.w #$0180
 	BRA -
 +	TAX
+	RTS
+
+StatOff:                           ; -> X = file * $100 (5.1 level stats)
+	LDA.l $7E0581
+	AND.w #$0003
+	XBA
+	TAX
 	RTS
 
 SaveExtra:                         ; [$7A] = the save slot being written
@@ -668,38 +840,22 @@ SaveExtra:                         ; [$7A] = the save slot being written
 	LDY.w #!SlotTail
 	LDA.w #!StatMagic
 	STA.b [$7A],y
-	LDX.w #0
--	TXA
-	CLC
-	ADC.w #!SlotTail+2
-	TAY
-	LDA.l !KongB,x
-	SEP #$20
-	STA.b [$7A],y
-	REP #$20
-	INX
-	CPX.w #5
-	BCC -
-	JSR FileOff                   ; and the collected-banana bitmap
-	TXA
-	STA.l !HudTmp
+	JSR StatOff                   ; 5.1: best visits and letters
 	LDY.w #0
--	TYX
-	LDA.l !Got,x
-	PHA
-	TYA
-	CLC
-	ADC.l !HudTmp
-	TAX
-	PLA
-	STA.l !FileArea,x
+-	PHX
+	TYX
+	LDA.l !Best,x
+	PLX
+	STA.l !StatArea,x
+	INX
+	INX
 	INY
 	INY
-	CPY.w #!GotBytes
+	CPY.w #$00FE
 	BCC -
-	JSR FileOff
-	LDA.w #!FileMagic
-	STA.l !FileArea+$17E,x
+	JSR StatOff
+	LDA.w #!StatAMagic
+	STA.l !StatArea+$FE,x
 	PLY
 	PLX
 	PLP
@@ -733,10 +889,10 @@ ClearStats:
 	PHX
 	LDA.w #0
 	LDX.w #0
--	STA.l !KongB,x
+-	STA.l !RunCount,x              ; visit, cabin / save-point bits
 	INX
 	INX
-	CPX.w #8                      ; K-O-N-G bits and the cabin / save-point bits
+	CPX.w #8
 	BCC -
 	LDX.w #0
 -	STA.l !Got,x
@@ -744,7 +900,18 @@ ClearStats:
 	INX
 	CPX.w #!GotBytes
 	BCC -
-	STA.l !CacheEnt
+	LDX.w #0
+-	STA.l !Best,x                  ; best visits and letters
+	INX
+	INX
+	CPX.w #$0100
+	BCC -
+	STA.l !Died
+	LDA.l $7E0575
+	AND.w #$00FF
+	STA.l !LastLives
+	LDA.w #$FFFF
+	STA.l !PlayIdx
 	JSR DoneReset
 	PLX
 	PLP
@@ -757,7 +924,6 @@ LoadPost:
 	STA.l $7E057F
 	STA.l $7E057D
 	STA.l $7E0571
-	STA.l !CacheEnt
 	PHX
 	PHY
 	LDA.l !SlotPtr
@@ -765,35 +931,75 @@ LoadPost:
 	ADC.w #!SlotTail
 	TAX
 	LDA.l $B00000,x
+	CMP.w #!StatMagic
+	BNE +
+	LDA.l $B00007,x                ; 5.0: cabin / save-point bits
+	STA.l !ShopB
++	JSR StatOff                    ; 5.1 file?
+	LDA.l !StatArea+$FE,x
+	CMP.w #!StatAMagic
+	BNE .old
+	LDY.w #0
+-	LDA.l !StatArea,x
+	PHX
+	TYX
+	STA.l !Best,x
+	PLX
+	INX
+	INX
+	INY
+	INY
+	CPY.w #$00FE
+	BCC -
+	JMP .out
+.old                               ; a file saved by 4.x / 5.0: convert its records
+	LDA.l !SlotPtr
+	CLC
+	ADC.w #!SlotTail
+	TAX
+	LDA.l $B00000,x
 	CMP.w #!OldMagic
-	BNE ++
+	BNE +
 	TXA
 	CLC
 	ADC.w #54
 	TAX
-	BRA +++
-++	CMP.w #!StatMagic
-	BNE ++++
-	LDA.l $B00007,x                ; 5.0: cabin / save-point bits
-	STA.l !ShopB
-	LDA.l $B00000,x
-++++	CMP.w #!Stat2Magic
-	BEQ +++
-	CMP.w #!StatMagic
-	BNE +
-+++	LDY.w #0
--	LDA.l $B00002,x
-	PHX
+	BRA ++
++	CMP.w #!StatMagic
+	BEQ ++
+	CMP.w #!Stat2Magic
+	BNE .bits
+++	LDY.w #0                       ; K-O-N-G bit per level -> all four letters
+-	PHX
+	TYA
+	LSR
+	LSR
+	LSR
+	STA.l !HudTmp
+	TXA
+	CLC
+	ADC.l !HudTmp
+	TAX
+	LDA.l $B00002,x
+	PHA
+	TYA
+	AND.w #$0007
+	TAX
+	PLA
+	AND.l BitMask,x
+	AND.w #$00FF
+	BEQ +
 	TYX
 	SEP #$20
-	STA.l !KongB,x
+	LDA.b #$0F
+	STA.l !Lett,x
 	REP #$20
-	PLX
-	INX
++	PLX
 	INY
-	CPY.w #5
+	CPY.w #!HudN
 	BCC -
-+	JSR FileOff
+.bits
+	JSR FileOff                    ; collected-banana bitmap -> best visit per level
 	LDA.l !FileArea+$17E,x
 	CMP.w #!FileMagic
 	BNE .out
@@ -810,6 +1016,33 @@ LoadPost:
 	INY
 	INY
 	CPY.w #!GotBytes
+	BCC -
+	LDX.w #0
+-	PHX
+	TXA
+	ASL
+	TAX
+	LDA.l !HudTotal,x
+	PLX
+	CMP.w #$0000
+	BEQ +
+	PHX
+	JSR LevelGot                   ; A = bananas of level X in the old bitmap
+	STA.l !HudTmp
+	LDA 1,s
+	ASL
+	TAX
+	LDA.l !HudTmp
+	STA.l !Best,x
+	PLX
+	INX
+	BRA -
++	LDX.w #0                      ; and start the next visit with every banana back
+-	LDA.w #$0000
+	STA.l !Got,x
+	INX
+	INX
+	CPX.w #!GotBytes
 	BCC -
 .out
 	JSR ValidateFlags
@@ -835,21 +1068,9 @@ GoldIcon2:
 	JSR LevelIndex
 	BCS .nox
 	TXA
-	STA.l !HudTmp
-	JSR KBitAddr
-	SEP #$20
-	AND.l !KongB,x
-	REP #$20
-	BEQ .nox
-	LDA.l !HudTmp
-	TAX
-	JSR LevelGot
-	PHA
-	LDA.l !HudTmp
 	ASL
 	TAX
-	PLA
-	CMP.l !HudTotal,x
+	JSR LevelFull
 	BCC .nox
 	PLX
 	PLA

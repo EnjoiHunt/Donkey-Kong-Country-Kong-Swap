@@ -1554,11 +1554,18 @@ IconDMA:                        ; runs in NMI right after the icon frame is sent
 	LDY.w #$0080
 	JSL $B999AD
 	REP #$30
-	LDA.w #$0E00                ; world-map stats HUD tiles at $E0-$EC
+	LDA.w #$0E00                ; world-map stats HUD tiles at $E0-$ED (digits, '/', banana, K, O)
 	STA.l $002116
 	LDA.w #!HudTiles&$FFFF
 	LDX.w #!HudTiles>>16
-	LDY.w #13*32
+	LDY.w #14*32
+	JSL $B999AD
+	REP #$30
+	LDA.w #$0F20                ; 5.1: N and G at $F2/$F3
+	STA.l $002116
+	LDA.w #(!HudTiles+$01C0)&$FFFF
+	LDX.w #!HudTiles>>16
+	LDY.w #2*32
 	JSL $B999AD
 	REP #$30
 	LDA.w #$0EE0                ; 5.0: Funky face, tiles $EE/$EF

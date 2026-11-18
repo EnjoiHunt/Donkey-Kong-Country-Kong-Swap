@@ -459,7 +459,6 @@ for n, lv in enumerate(_tracked):
     rom[lo_half(0x40) + 0x3900 + n * 2:lo_half(0x40) + 0x3900 + n * 2 + 2] = _w(t)
     lv['total'] = t
 assert _L['K'] <= 0x170 * 8, _L['K']
-assert _L['K'] == 354 * 8 + 3 and len(_tracked) == 33, 'update !GotFull / !GotLast / the K check in hud.asm'
 print('bananas numbered', _L['K'], 'table bytes', _pos, 'levels', len(_tracked))
 _yel = idx_of((248, 232, 64)); _dk = idx_of((120, 72, 16))
 _hud, _ = HT.make(1, 2, _yel, _dk)

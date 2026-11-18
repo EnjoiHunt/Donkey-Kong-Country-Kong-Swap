@@ -1,4 +1,4 @@
-"""8x8 HUD tiles for the world-map stats: digits 0-9, '/', a banana and a K."""
+"""8x8 HUD tiles for the world-map stats: digits 0-9, '/', a banana and the letters K, O, N, G."""
 FONT = {
  '0': ["0110", "1001", "1001", "1001", "1001", "1001", "0110"],
  '1': ["0010", "0110", "0010", "0010", "0010", "0010", "0111"],
@@ -28,6 +28,31 @@ KLET = ["dddd.ddd",
         "dyydyyd.",
         "dyyd.dyd",
         "dddd.ddd"]
+
+OLET = [".dddddd.",
+        "dyyyyyyd",
+        "dyyddyyd",
+        "dyyddyyd",
+        "dyyddyyd",
+        "dyyddyyd",
+        "dyyyyyyd",
+        ".dddddd."]
+NLET = ["dddddddd",
+        "dyyddyyd",
+        "dyyydyyd",
+        "dyyyyyyd",
+        "dyydyyyd",
+        "dyyddyyd",
+        "dyyddyyd",
+        "dddddddd"]
+GLET = [".dddddd.",
+        "dyyyyyyd",
+        "dyyddddd",
+        "dyyddyyd",
+        "dyydyyyd",
+        "dyyddyyd",
+        "dyyyyyyd",
+        ".dddddd."]
 
 
 def grid_char(rows, fg, outline):
@@ -64,5 +89,6 @@ def tile_bytes(g):
 def make(white, black, yellow, dark):
     tiles = [grid_char(FONT[c], white, black) for c in '0123456789/']
     tiles.append(grid_pic(BANANA, {'y': yellow, 'd': dark}))
-    tiles.append(grid_pic(KLET, {'y': yellow, 'd': dark}))
+    for g in (KLET, OLET, NLET, GLET):            # K O N G: tiles $EC, $ED, then $F2, $F3
+        tiles.append(grid_pic(g, {'y': yellow, 'd': dark}))
     return b''.join(tile_bytes(g) for g in tiles), tiles

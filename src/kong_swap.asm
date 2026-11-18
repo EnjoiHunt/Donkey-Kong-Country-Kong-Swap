@@ -1566,7 +1566,18 @@ IconDMA:                        ; runs in NMI right after the icon frame is sent
 	LDY.w #$0080
 	JSL $B999AD
 	REP #$30
-	LDA.w #$0E00                ; world-map stats HUD tiles at $E0-$ED (digits, '/', banana, K, O)
+	LDA.l $7E0002               ; 5.4: on the island (map 0) the world medals use $E0-$E7
+	AND.w #$00FF
+	BNE +
+	LDA.w #$0E00
+	STA.l $002116
+	LDA.w #!MedalTiles&$FFFF
+	LDX.w #!MedalTiles>>16
+	LDY.w #8*32
+	JSL $B999AD
+	REP #$30
+	BRA ++
++	LDA.w #$0E00                ; world-map stats HUD tiles at $E0-$ED (digits, '/', banana, K, O)
 	STA.l $002116
 	LDA.w #!HudTiles&$FFFF
 	LDX.w #!HudTiles>>16
@@ -1580,6 +1591,7 @@ IconDMA:                        ; runs in NMI right after the icon frame is sent
 	LDY.w #2*32
 	JSL $B999AD
 	REP #$30
+++
 	LDA.w #$0EE0                ; 5.0: Funky face, tiles $EE/$EF
 	STA.l $002116
 	LDA.w #!FunkyFace&$FFFF

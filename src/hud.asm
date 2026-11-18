@@ -29,6 +29,9 @@
 !Lett      = $B07280             ; 64 bytes: K-O-N-G letters found per level index (bits 0-3)
 !StatArea  = $B07400             ; + file*$100: saved copy of $B0:7200-$72FF, magic at +$FE
 !StatAMagic = $4C42              ; "BL"
+!LevelWorld = $403980            ; 5.4: level index -> world 0-5 ($FF: none)
+!WorldTab  = $4039C0             ; 6 x (boss entrance, medal x, medal y) on the island map
+!MedalTiles = $7C2300            ; 8 tiles: gold medal, silver medal (2x2 each)
 !HudTmp    = $7E04A6             ; scratch (5 words)
 !HudFrameNo = $7E04B6
 !SlotPtr   = $7E04B8
@@ -688,6 +691,11 @@ HudDraw:                           ; end of every frame: draw the stats if the m
 	CMP.l !HudFrameNo
 	BEQ +
 	JMP .out
++	LDA.l $7E0002                 ; 5.4: map 0 = the island: world medals instead
+	AND.w #$00FF
+	BNE +
+	JSR IslandDraw
+	JMP .out
 +	LDA.l $7E003E
 	JSR LevelIndex
 	BCC +
@@ -737,6 +745,98 @@ HudDraw:                           ; end of every frame: draw the stats if the m
 	LDX.b $8E
 	CPX.w #$0400
 	RTL
+
+; ---- 5.4: world medals on the island map ----------------------------------------------------
+IslandDraw:                        ; silver: world's boss beaten, gold: and every level in it 100%
+	LDA.l $7E008E
+	CMP.w #$0400-(4*24)
+	BCC +
+	RTS
++	STA.l !OamPtr
+	LDX.w #0
+.world
+	PHX
+	LDA.l !WorldTab,x             ; boss beaten?
+	AND.w #$00FF
+	TAX
+	LDA.l $7EFAFC,x
+	AND.w #$00FF
+	BEQ .next
+	LDA 1,s
+	TAX
+	LDA.l !WorldTab+2,x
+	STA.l !PosX
+	LDA.l !WorldTab+4,x
+	STA.l !PosY
+	TXA                           ; world number = x / 6
+	LDX.w #0
+-	CMP.w #6
+	BCC +
+	SBC.w #6
+	INX
+	BRA -
++	TXA
+	JSR WorldFull
+	LDA.w #$E0                    ; gold medal tiles
+	BCS +
+	LDA.w #$E4                    ; silver
++	STA.l !HudTmp+6
+	JSR PutTile
+	LDA.l !HudTmp+6
+	INC
+	JSR PutTile
+	LDA.l !PosX
+	SEC
+	SBC.w #16
+	STA.l !PosX
+	LDA.l !PosY
+	CLC
+	ADC.w #8
+	STA.l !PosY
+	LDA.l !HudTmp+6
+	CLC
+	ADC.w #2
+	JSR PutTile
+	LDA.l !HudTmp+6
+	CLC
+	ADC.w #3
+	JSR PutTile
+.next
+	PLA
+	CLC
+	ADC.w #6
+	TAX
+	CPX.w #36
+	BCS +
+	JMP .world
++	LDA.l !OamPtr
+	STA.l $7E008E
+	RTS
+
+WorldFull:                         ; A = world -> carry set if every level of it is 100%
+	PHY
+	STA.l !HudTmp+4
+	LDY.w #0
+-	TYX
+	LDA.l !LevelWorld,x
+	AND.w #$00FF
+	CMP.l !HudTmp+4
+	BNE +
+	TYA
+	ASL
+	TAX
+	JSR LevelFull
+	BCC .no
++	INY
+	CPY.w #64
+	BCC -
+	PLY
+	SEC
+	RTS
+.no
+	PLY
+	CLC
+	RTS
 
 PutTile:                           ; A = tile; one 8x8 OAM entry at !OamPtr, x = !PosX
 	PHX

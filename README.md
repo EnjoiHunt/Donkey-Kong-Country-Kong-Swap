@@ -5,6 +5,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 ![The four pairs on the world map](docs/images/independent_swap.png)
 ![Level stats on the world map](docs/images/map_stats.png)
 ![Gold faces for 100% levels (before / after)](docs/images/gold_icons.png)
+![World medals on the island map](docs/images/world_medals.png)
 ![A missing partner shown as a ghost](docs/images/ghost_partner.png)
 ![Cranky and Candy on the world map](docs/images/cranky_candy_map.png)
 ![Funky surfing, jumping on his board, and on the world map](docs/images/funky.png)
@@ -13,6 +14,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 - **Funky Kong** (new in 5.0) is playable once your file is **100% complete**: every banana and all four K-O-N-G letters in every level. Hold **Y** to ride his **surfboard**: he goes twice as fast as a running DK, knocks out the enemies he rides into, and a jump started on the board goes higher than Diddy's. His art is his DKC2 Funky's Flights II sprite with a drawn surfboard.
 - **Unlocking** (new in 5.0): **Cranky** joins the R cycle once you've visited **all six Cranky's Cabins**, and **Candy** joins the L cycle once you've **saved at all six Candy's Save Points**. Visits and saves are recorded with your save file (a cabin visit is kept the next time you save). Until then those Kongs are skipped when you press R or L.
+- **World medals on the island map** (new in 5.4): once you beat a world's boss, a **silver** medal hangs over that world on the Kong Island map; it turns **gold** when every level in the world is 100% complete.
 - **Level stats on the world map** (changed in 5.1): before you pick a level, the top-left corner shows your **best banana count** for it (the most you've collected in one visit) next to its total (bonus rooms included, a bunch counts as 10), and under it the **K-O-N-G letters** you've found there (missing letters are left blank). Every visit starts with all the bananas and letters back, as in the original game. If you lose a life, the visit carries on: when you go back in, the bananas and letters you already got stay collected and keep counting. When a level is 100% complete (every banana in one visit and all four letters), the face of the Kong who beat it turns **gold** on the map. Everything is saved with your game at Candy's.
 - **The banana counter keeps counting past 100** (new in 4.3): you still get an extra life every 100 bananas, but the counter goes on to 101, 102 and so on (up to 999) instead of starting over.
 - **Pick each Kong independently any time on the world map**: **R** cycles the lead Kong (DK → Kiddy → Cranky → Funky) and **L** cycles the partner (Diddy → Dixie → Candy). Both Kongs on the map update right away. DK & Diddy stay exactly as in the original game.
@@ -41,7 +43,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v5.3.bps`](patches/dkc1_kong_swap_v5.3.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v5.3.ips`](patches/dkc1_kong_swap_v5.3.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v5.4.bps`](patches/dkc1_kong_swap_v5.4.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v5.4.ips`](patches/dkc1_kong_swap_v5.4.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
 The patched ROM is 8 MB (ExHiROM) with 8 KB of save RAM (up from 2 KB) to hold the level records. Delete any old `.srm` from versions before 4.3 if your emulator complains about its size; your files keep working either way. Files saved with 4.3 or earlier have no cabin or save-point records yet, so Cranky and Candy start locked on them until you visit those places again. The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`. Older versions are on the Releases page.

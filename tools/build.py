@@ -385,12 +385,12 @@ rest = [c for c in cols if near(c, WHITE) > 900 and near(c, BLACK) > 900]
 import random
 random.seed(3)
 uniq = sorted(set(rest), key=lambda c: -rest.count(c))
-cent = uniq[:12] + [uniq[0]] * max(0, 12 - len(uniq))
+cent = uniq[:10] + [uniq[0]] * max(0, 10 - len(uniq))
 for _ in range(20):
     groups = [[] for _ in cent]
     for c in rest: groups[min(range(len(cent)), key=lambda i: near(c, cent[i]))].append(c)
     cent = [tuple(sum(v[k] for v in g) // len(g) for k in range(3)) if g else cent[i] for i, g in enumerate(groups)]
-cent = cent + [(248, 232, 64)]                  # 5.0: keep a true yellow for the HUD banana / K icons
+cent = cent + [(248, 232, 64), (200, 200, 208), (128, 128, 144)]   # yellow for the HUD, greys for the silver medal (5.4)
 palette = [WHITE, BLACK] + cent                 # indices 1..15
 def idx_of(c): return 1 + min(range(15), key=lambda i: near(c, palette[i]))
 def tiles16(rgb, m):
@@ -471,6 +471,64 @@ for n, lv in enumerate(_tracked):
 assert _L['K'] <= 0x170 * 8, _L['K']
 print('bananas numbered', _L['K'], 'table bytes', _pos, 'levels', len(_tracked))
 _yel = idx_of((248, 232, 64)); _dk = idx_of((120, 72, 16))
+# --- 5.4: world medals on the island map (gold: world 100%, silver: world beaten) ---
+_ENTN = {v: k for k, v in json.load(open(CFG.data('entrances.json'))).items()}
+WORLD_LEVELS = [   # (world map entrance, boss entrance, levels)
+    (0xEC, 0xE0, 'JungleHijinxs RopeyRampage ReptileRumble CoralCapers BarrelCannonCanyon'),
+    (0xED, 0xE1, 'WinkysWalkway MineCartCarnage BouncyBonanza StopAndGoStation MillstoneMayhem'),
+    (0xE9, 0xE5, 'VultureCulture TreeTopTown ForestFrenzy TempleTempest OrangutanGang ClamCity'),
+    (0xE8, 0xE2, 'SnowBarrelBlast SlipSlideRide IceAgeAlley CroctopusChase TorchlightTrouble RopeBridgeRumble'),
+    (0xE7, 0xE3, 'OilDrumAlley TrickTrackTrek ElevatorAntics PoisonPond MinecartMadness BlackoutBasement'),
+    (0xE6, 0xE4, 'TankedUpTrouble ManicMincers MistyMine LoopyLights PlatformPerils'),
+]
+_lw = bytearray([0xFF] * 64)
+for n, lv in enumerate(_tracked):
+    nm = _ENTN.get(lv['entrance'], '').split('_')[0]
+    for w, (_, _, names) in enumerate(WORLD_LEVELS):
+        if nm in names.split(): _lw[n] = w
+assert sum(1 for v in _lw if v != 0xFF) == 33, [(_ENTN.get(lv['entrance']), _lw[n]) for n, lv in enumerate(_tracked)]
+rom[lo_half(0x40) + 0x3980:lo_half(0x40) + 0x39C0] = _lw
+_wt = b''
+for wmap, boss, _ in WORLD_LEVELS:          # island node of the world (the game's own table) -> screen
+    nx = R1[0x3CF54B + wmap]; ny = 496 - (R1[0x3CF64B + wmap] + 0x100)
+    _wt += _w(boss) + _w(nx - 8) + _w(max(26, ny - 24))
+rom[lo_half(0x40) + 0x39C0:lo_half(0x40) + 0x39C0 + len(_wt)] = _wt
+def _medal(metal):
+    """16x16 medal on a ribbon, in the face/HUD palette"""
+    rib, rib2 = idx_of((248, 80, 168)), idx_of((168, 64, 64))
+    if metal == 'gold': lit, mid, drk = idx_of((248, 248, 120)), _yel, idx_of((168, 120, 56))
+    else: lit, mid, drk = 1, idx_of((200, 200, 208)), idx_of((128, 128, 144))
+    ol = 2
+    g = [[0] * 16 for _ in range(16)]
+    for y in range(0, 7):                      # two ribbon straps meeting at the top of the disc
+        for x in range(16):
+            a, b = 3 + y // 2, 12 - y // 2
+            if a <= x <= a + 2: g[y][x] = rib if x < a + 2 else rib2
+            if b - 2 <= x <= b: g[y][x] = rib if x > b - 2 else rib2
+    cx, cy, r = 7.5, 10.5, 5.2
+    for y in range(4, 16):
+        for x in range(16):
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if d <= r + 0.6: g[y][x] = ol
+            if d <= r - 0.4: g[y][x] = drk
+            if d <= r - 1.4: g[y][x] = mid
+            if d <= r - 1.4 and (x - cx) + (y - cy) < -2.2: g[y][x] = lit
+    for (x, y) in ((7, 8), (8, 8), (6, 10), (9, 10), (7, 11), (8, 11), (7, 9), (8, 9), (7, 10), (8, 10)):
+        g[y][x] = lit                            # a little star / shine in the middle
+    return g
+_md = b''
+for metal in ('gold', 'silver'):
+    g = _medal(metal)
+    for ty, tx in ((0, 0), (0, 1), (1, 0), (1, 1)):
+        _md += HT.tile_bytes([row[tx * 8:tx * 8 + 8] for row in g[ty * 8:ty * 8 + 8]])
+rom[lo_half(0x7C) + 0x2300:lo_half(0x7C) + 0x2300 + len(_md)] = _md
+_mp = [(0, 0, 0)] + list(palette)
+from PIL import Image as _I
+_mi = _I.new('RGB', (32, 16))
+for i, metal in enumerate(('gold', 'silver')):
+    for y, row in enumerate(_medal(metal)):
+        for x, v in enumerate(row): _mi.putpixel((i * 16 + x, y), _mp[v] if v else (60, 90, 60))
+_mi.resize((256, 128), _I.NEAREST).save(os.path.join(CFG.BUILD, 'medals_preview.png'))
 _hud, _ = HT.make(1, 2, _yel, _dk)
 rom[lo_half(0x7C) + 0x2100:lo_half(0x7C) + 0x2100 + len(_hud)] = _hud
 print('hud levels', len(_tracked))

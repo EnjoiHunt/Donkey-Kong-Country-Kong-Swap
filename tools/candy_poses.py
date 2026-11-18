@@ -3,29 +3,46 @@ import math, sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 import candy_rig as C
 
-def walk(k, n=8, amp=22, arm=12):
-    t = 2 * math.pi * k / n; s = math.sin(t)
-    tl, tr = amp * s, -amp * s
-    sl = tl - 28 * max(0, math.cos(t))
-    sr = tr - 28 * max(0, -math.cos(t))
-    return C.ground(C.pose(thighL=tl, shinL=sl, thighR=tr, shinR=sr, armR=-arm * s))
+def lean(a, ang):
+    """tilt the whole figure about her feet (negative = leaning forward, she faces +x)"""
+    return C.ground(C.rotate_whole(a, ang, (128, 118), (128, 118)))
+
+
+def walk(k, n=8):
+    """5.3: a hip-swinging walk, one hand on her hip, the other arm swinging"""
+    t = 2 * math.pi * k / n; s, c = math.sin(t), math.cos(t)
+    th = 22 * s
+    tl, sl = th, th - 35 * max(0, c) - 4
+    tr, sr = -th, -th - 35 * max(0, -c) - 4
+    a = C.pose(thighL=tl, shinL=sl, thighR=tr, shinR=sr, armR=-18 * s + 4, foreR=-18 * s + 20, hip_merge=0.6)
+    return C.shift(lean(a, -3), 0, -int(round(1.5 * abs(c))))
+
+
+# 5.3: run cycle keyed like a side-view sprint: (thigh, shin) for one leg, the other half a cycle later
+RUN_LEG = [(25, 5), (15, -10), (0, -15), (-20, -30), (-30, -60), (-10, -105), (35, -55), (42, 0)]
+
 
 def run(k, n=8):
-    t = 2 * math.pi * k / n; s = math.sin(t)
-    tl, tr = 38 * s, -38 * s
-    sl = tl - 50 * max(0, math.cos(t))
-    sr = tr - 50 * max(0, -math.cos(t))
-    a = C.pose(thighL=tl, shinL=sl, thighR=tr, shinR=sr, armR=-35 * s, foreR=-35 * s + 40)
-    return C.ground(C.rotate_whole(a, 8, (128, 120), (128, 120)))
+    tl, sl = RUN_LEG[k % 8]; tr, sr = RUN_LEG[(k + 4) % 8]
+    arm = 38 * math.cos(2 * math.pi * k / 8 - 0.6)      # both arms pump, against the legs
+    a = C.pose(thighL=tl, shinL=sl, thighR=tr, shinR=sr, armR=-arm + 5, foreR=-arm + 75,
+               armL=arm + 5, foreL=arm + 75, hip_merge=0.8)
+    bob = 2 if k % 4 in (1, 2) else 0                    # lower while her weight is on a leg
+    return C.shift(lean(a, -12), 0, bob - 2)
 
 POSES = {}
 for k in range(8): POSES[f'walk{k}'] = walk(k)
 for k in range(8): POSES[f'run{k}'] = run(k)
 # jump: front knee up, arm raised
-POSES['jump0'] = C.pose(thighL=-15, shinL=-30, thighR=70, shinR=-20, armR=150, foreR=165, body_dy=-6, arm_behind=True)
-POSES['jump1'] = C.pose(thighL=-25, shinL=-10, thighR=55, shinR=-5, armR=160, foreR=172, body_dy=-6, arm_behind=True)
-POSES['fall0'] = C.pose(thighL=-20, shinL=-5, thighR=25, shinR=10, armR=125, foreR=150, armL=-125, foreL=-150, arm_behind=True)
-POSES['fall1'] = C.pose(thighL=-25, shinL=-10, thighR=30, shinR=15, armR=135, foreR=160, armL=-135, foreL=-160, arm_behind=True)
+# 5.3 jump: front knee driven up, back leg tucked, one arm reaching up; fall: legs reaching down, arms out
+POSES['jump0'] = lean(C.pose(thighL=-10, shinL=-55, thighR=65, shinR=-15, armR=155, foreR=170, armL=60, foreL=110,
+                             body_dy=-6, arm_behind=True, hip_merge=0.7), -6)
+POSES['jump1'] = lean(C.pose(thighL=-5, shinL=-45, thighR=75, shinR=-5, armR=165, foreR=175, armL=70, foreL=120,
+                             body_dy=-6, arm_behind=True, hip_merge=0.7), -6)
+POSES['fall0'] = C.pose(thighL=-15, shinL=-20, thighR=35, shinR=5, armR=120, foreR=140, armL=-110, foreL=-130,
+                        arm_behind=True, hip_merge=0.5)
+POSES['fall1'] = C.pose(thighL=-20, shinL=-5, thighR=25, shinR=15, armR=105, foreR=120, armL=-100, foreL=-115,
+                        arm_behind=True, hip_merge=0.5)
 # crouch / land / duck
 POSES['crouch'] = C.ground(C.pose(thighL=-60, shinL=10, thighR=65, shinR=-15, armR=20, body_dy=12))
 POSES['duck'] = C.ground(C.pose(thighL=-85, shinL=5, thighR=80, shinR=-5, armR=30, foreR=60, body_dy=18))
@@ -47,9 +64,10 @@ for k in range(4):
 for k in range(8):
     t = 2 * math.pi * k / 8; s = math.sin(t)
     tl, tr = 20 * s, -20 * s
-    POSES[f'carrywalk{k}'] = C.ground(C.pose(thighL=tl, shinL=tl - 26 * max(0, math.cos(t)), thighR=tr,
+    POSES[f'carrywalk{k}'] = C.shift(C.ground(C.pose(thighL=tl, shinL=tl - 26 * max(0, math.cos(t)), thighR=tr,
                                              shinR=tr - 26 * max(0, -math.cos(t)), armR=160, foreR=200,
-                                             armL=-160, foreL=-200, arm_behind=True))
+                                             armL=-160, foreL=-200, arm_behind=True, hip_merge=0.6)),
+                                     0, -int(round(1.5 * abs(math.cos(t)))))
 # crawl: low crouch, reaching arm
 for k in range(4):
     s = math.sin(2 * math.pi * k / 4)

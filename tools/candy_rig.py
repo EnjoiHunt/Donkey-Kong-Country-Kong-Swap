@@ -47,20 +47,26 @@ def blank():
 def fill_hand_gap(out, dy=0):
     """When the hip arm is removed, paint leotard where the hand covered it."""
     for y in range(82, 89):
-        row = [x for x in range(122, 131) if PINK[y, x] or TORSO_NOARM[y, x]]
         for x in range(122, 130):
             if out[y + dy, x] == 0 and S[y, x] and ARM_L[y, x]:
-                out[y + dy, x] = 4 if x > 123 else 1
+                # 5.3: take the colour of the body next to it (was a dark outline: a black notch)
+                v = 0
+                for xx in range(x + 1, 134):
+                    if TORSO_NOARM[y, xx] and S[y, xx] not in (1, 2):
+                        v = S[y, xx]; break
+                out[y + dy, x] = v or 4
 
 
 def pose(thighL=0, shinL=0, thighR=0, shinR=0, armR=0, foreR=None, armL=None, foreL=None,
-         body_dy=0, body_dx=0, hip_arm=True, front='R', arm_behind=False, no_back_leg=False):
+         body_dy=0, body_dx=0, hip_arm=True, front='R', arm_behind=False, no_back_leg=False, hip_merge=0.0):
     """Angles in degrees, positive = towards +x (Candy faces +x).
     armL: None keeps the hand on her hip; a number gives her a straight arm
     (a copy of the right arm) at that angle."""
     out = blank()
-    hipL = (HIP_L[0] + body_dx, HIP_L[1] + body_dy)
-    hipR = (HIP_R[0] + body_dx, HIP_R[1] + body_dy)
+    # hip_merge 0..1 brings the two hip joints together, so the legs swing like a side view
+    m = (HIP_R[0] - HIP_L[0]) / 2 * hip_merge
+    hipL = (int(round(HIP_L[0] + body_dx + m)), HIP_L[1] + body_dy)
+    hipR = (int(round(HIP_R[0] + body_dx - m)), HIP_R[1] + body_dy)
     legs = [(THIGH_L, SHIN_L, HIP_L, KNEE_L, thighL, shinL, hipL),
             (THIGH_R, SHIN_R, HIP_R, KNEE_R, thighR, shinR, hipR)]
     if front == 'L':

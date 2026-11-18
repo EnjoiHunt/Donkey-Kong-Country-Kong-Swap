@@ -18,7 +18,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 - **Pick each Kong independently any time on the world map**: **R** cycles the lead Kong (DK → Kiddy → Cranky → Funky) and **L** cycles the partner (Diddy → Dixie → Candy). Both Kongs on the map update right away. DK & Diddy stay exactly as in the original game.
 - **Cranky Kong** (new in 3.0) uses DKC1's own Cranky art, including his unused walk cycle. He **swings his cane** instead of rolling.
   - (new in 5.2) He's an old man, so he walks and runs a little slower than the other Kongs. The first hit doesn't cost him a life: it knocks his **cane** away and he walks and runs slower still. Breaking a **DK barrel** gives the cane back (so does losing a life).
-- **Candy Kong** (new in 3.0) uses her DKC1 art plus newly made walking, running, jumping, swimming, climbing and carrying frames. Her attack is a **blown kiss**, holding Down plays her whole bend-over-and-blow-a-kiss animation, crawls on her front, and she swoons when hit.
+- **Candy Kong** (new in 3.0) uses her DKC1 art plus newly made walking, running, jumping, swimming, climbing and carrying frames. In 5.3 her run became a forward-leaning sprint with both arms pumping, her walk got a hip sway, and her jumps tuck a knee and reach up. Her attack is a **blown kiss**, holding Down plays her whole bend-over-and-blow-a-kiss animation, crawls on her front, and she swoons when hit.
 - **Both Kongs always appear on the world map.** If one of them is missing (lost in a level, or Diddy still captured at the start), they follow along as a pale **ghost**, so you can always see which two Kongs you have picked.
 - **Dixie's Helicopter Spin**: jump (or walk off a ledge), then hold **B** to twirl her ponytail and float down.
 - **Kiddy's Ground Pound**: press **Down** in mid-air. He pauses, flips, and slams down butt-first.
@@ -41,7 +41,7 @@ A ROM hack of **Donkey Kong Country** (SNES, USA v1.0) that adds **Kiddy Kong** 
 
 1. Get a **clean, headerless** dump of *Donkey Kong Country (USA) v1.0* from a cartridge you own.
    SHA-256: `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15`
-2. Apply [`patches/dkc1_kong_swap_v5.2.bps`](patches/dkc1_kong_swap_v5.2.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v5.2.ips`](patches/dkc1_kong_swap_v5.2.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
+2. Apply [`patches/dkc1_kong_swap_v5.3.bps`](patches/dkc1_kong_swap_v5.3.bps) (recommended, because it checks that you used the right ROM) or [`patches/dkc1_kong_swap_v5.3.ips`](patches/dkc1_kong_swap_v5.3.ips) (for patchers that only support IPS) with [Floating IPS](https://www.smwcentral.net/?p=section&a=details&id=11474) or [Rom Patcher JS](https://www.marcrobledo.com/RomPatcher.js/).
 3. Play in any accurate SNES emulator (tested in snes9x and bsnes).
 
 The patched ROM is 8 MB (ExHiROM) with 8 KB of save RAM (up from 2 KB) to hold the level records. Delete any old `.srm` from versions before 4.3 if your emulator complains about its size; your files keep working either way. Files saved with 4.3 or earlier have no cabin or save-point records yet, so Cranky and Candy start locked on them until you visit those places again. The v1.0 patches (which switch both Kongs together with L or R) are still in `patches/`. Older versions are on the Releases page.

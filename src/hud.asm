@@ -31,7 +31,9 @@
 !StatAMagic = $4C42              ; "BL"
 !LevelWorld = $403980            ; 5.4: level index -> world 0-5 ($FF: none)
 !WorldTab  = $4039C0             ; 6 x (boss entrance, medal x, medal y) on the island map
-!MedalTiles = $7C2300            ; 8 tiles: gold medal, silver medal (2x2 each)
+!MedalTiles = $7C2600            ; 9 tiles: the medal (3x3), in DK map-palette colours
+!SilverPal = $403A40             ; silver version of the DK face colours
+!TileAttr  = $7E0434             ; OAM attributes PutTile uses
 !HudTmp    = $7E04A6             ; scratch (5 words)
 !HudFrameNo = $7E04B6
 !SlotPtr   = $7E04B8
@@ -691,11 +693,16 @@ HudDraw:                           ; end of every frame: draw the stats if the m
 	CMP.l !HudFrameNo
 	BEQ +
 	JMP .out
-+	LDA.l $7E0002                 ; 5.4: map 0 = the island: world medals instead
++	LDA.w #$0034
+	STA.l !TileAttr
+	LDA.l $7E0002                 ; 5.4: map 0 = the island: world medals instead
 	AND.w #$00FF
 	BNE +
+	LDA.l $7E0042                 ; (one-player only: the medal colours share the gold-face palettes)
+	CMP.w #$0002
+	BEQ ++
 	JSR IslandDraw
-	JMP .out
+++	JMP .out
 +	LDA.l $7E003E
 	JSR LevelIndex
 	BCC +
@@ -749,7 +756,7 @@ HudDraw:                           ; end of every frame: draw the stats if the m
 ; ---- 5.4: world medals on the island map ----------------------------------------------------
 IslandDraw:                        ; silver: world's boss beaten, gold: and every level in it 100%
 	LDA.l $7E008E
-	CMP.w #$0400-(4*24)
+	CMP.w #$0400-(4*54)
 	BCC +
 	RTS
 +	STA.l !OamPtr
@@ -761,11 +768,10 @@ IslandDraw:                        ; silver: world's boss beaten, gold: and ever
 	TAX
 	LDA.l $7EFAFC,x
 	AND.w #$00FF
-	BEQ .next
-	LDA 1,s
+	BNE +
+	JMP .next
++	LDA 1,s
 	TAX
-	LDA.l !WorldTab+2,x
-	STA.l !PosX
 	LDA.l !WorldTab+4,x
 	STA.l !PosY
 	TXA                           ; world number = x / 6
@@ -777,30 +783,28 @@ IslandDraw:                        ; silver: world's boss beaten, gold: and ever
 	BRA -
 +	TXA
 	JSR WorldFull
-	LDA.w #$E0                    ; gold medal tiles
+	LDA.w #$0036                  ; gold: the gold-face palette (3)
+	LDY.w #9                      ; (tile list offset)
 	BCS +
-	LDA.w #$E4                    ; silver
-+	STA.l !HudTmp+6
-	JSR PutTile
-	LDA.l !HudTmp+6
-	INC
-	JSR PutTile
-	LDA.l !PosX
-	SEC
-	SBC.w #16
+	LDA.w #$003A                  ; silver: palette 5, which is silver on the island
+	LDY.w #0
++	STA.l !TileAttr
+	TYA
+	STA.l !HudTmp+6
+	LDY.w #3                      ; 3 rows of 3 tiles
+--	LDA 1,s
+	TAX
+	LDA.l !WorldTab+2,x
 	STA.l !PosX
+	JSR .tile
+	JSR .tile
+	JSR .tile
 	LDA.l !PosY
 	CLC
 	ADC.w #8
 	STA.l !PosY
-	LDA.l !HudTmp+6
-	CLC
-	ADC.w #2
-	JSR PutTile
-	LDA.l !HudTmp+6
-	CLC
-	ADC.w #3
-	JSR PutTile
+	DEY
+	BNE --
 .next
 	PLA
 	CLC
@@ -812,6 +816,18 @@ IslandDraw:                        ; silver: world's boss beaten, gold: and ever
 +	LDA.l !OamPtr
 	STA.l $7E008E
 	RTS
+.tile
+	LDA.l !HudTmp+6
+	TAX
+	INC
+	STA.l !HudTmp+6
+	LDA.l MedalTileNo,x
+	AND.w #$00FF
+	JMP PutTile
+
+MedalTileNo:                       ; silver (palette 5) and gold (palette 3) share the tiles
+	db $E9,$EA,$EB,$EC,$ED,$EE,$EF,$F2,$F3
+	db $E9,$EA,$EB,$EC,$ED,$EE,$EF,$F2,$F3
 
 WorldFull:                         ; A = world -> carry set if every level of it is 100%
 	PHY
@@ -850,7 +866,7 @@ PutTile:                           ; A = tile; one 8x8 OAM entry at !OamPtr, x =
 	STA.l $7E0001,x
 	PLA
 	STA.l $7E0002,x
-	LDA.b #$34                    ; priority 3, palette 2
+	LDA.l !TileAttr               ; priority 3, palette 2 (medals: palette 3 / 5)
 	STA.l $7E0003,x
 	PLA
 	REP #$20
@@ -1233,6 +1249,24 @@ GoldPalettes:
 	INX
 	INX
 	CPX.w #60
+	BCC -
+	LDA.l $7E0002                  ; 5.4: on the island, palette 5 is the silver medal instead
+	AND.w #$00FF
+	BNE .out
+	SEP #$20
+	LDA.b #$D1
+	STA.l $002121
+	REP #$20
+	LDX.w #0
+-	LDA.l !SilverPal,x
+	SEP #$20
+	STA.l $002122
+	XBA
+	STA.l $002122
+	REP #$20
+	INX
+	INX
+	CPX.w #30
 	BCC -
 .out
 	PLX

@@ -491,44 +491,9 @@ rom[lo_half(0x40) + 0x3980:lo_half(0x40) + 0x39C0] = _lw
 _wt = b''
 for wmap, boss, _ in WORLD_LEVELS:          # island node of the world (the game's own table) -> screen
     nx = R1[0x3CF54B + wmap]; ny = 496 - (R1[0x3CF64B + wmap] + 0x100)
-    _wt += _w(boss) + _w(nx - 8) + _w(max(26, ny - 24))
+    _wt += _w(boss) + _w(nx - 12) + _w(max(26, ny - 30))
 rom[lo_half(0x40) + 0x39C0:lo_half(0x40) + 0x39C0 + len(_wt)] = _wt
-def _medal(metal):
-    """16x16 medal on a ribbon, in the face/HUD palette"""
-    rib, rib2 = idx_of((248, 80, 168)), idx_of((168, 64, 64))
-    if metal == 'gold': lit, mid, drk = idx_of((248, 248, 120)), _yel, idx_of((168, 120, 56))
-    else: lit, mid, drk = 1, idx_of((200, 200, 208)), idx_of((128, 128, 144))
-    ol = 2
-    g = [[0] * 16 for _ in range(16)]
-    for y in range(0, 7):                      # two ribbon straps meeting at the top of the disc
-        for x in range(16):
-            a, b = 3 + y // 2, 12 - y // 2
-            if a <= x <= a + 2: g[y][x] = rib if x < a + 2 else rib2
-            if b - 2 <= x <= b: g[y][x] = rib if x > b - 2 else rib2
-    cx, cy, r = 7.5, 10.5, 5.2
-    for y in range(4, 16):
-        for x in range(16):
-            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-            if d <= r + 0.6: g[y][x] = ol
-            if d <= r - 0.4: g[y][x] = drk
-            if d <= r - 1.4: g[y][x] = mid
-            if d <= r - 1.4 and (x - cx) + (y - cy) < -2.2: g[y][x] = lit
-    for (x, y) in ((7, 8), (8, 8), (6, 10), (9, 10), (7, 11), (8, 11), (7, 9), (8, 9), (7, 10), (8, 10)):
-        g[y][x] = lit                            # a little star / shine in the middle
-    return g
-_md = b''
-for metal in ('gold', 'silver'):
-    g = _medal(metal)
-    for ty, tx in ((0, 0), (0, 1), (1, 0), (1, 1)):
-        _md += HT.tile_bytes([row[tx * 8:tx * 8 + 8] for row in g[ty * 8:ty * 8 + 8]])
-rom[lo_half(0x7C) + 0x2300:lo_half(0x7C) + 0x2300 + len(_md)] = _md
-_mp = [(0, 0, 0)] + list(palette)
-from PIL import Image as _I
-_mi = _I.new('RGB', (32, 16))
-for i, metal in enumerate(('gold', 'silver')):
-    for y, row in enumerate(_medal(metal)):
-        for x, v in enumerate(row): _mi.putpixel((i * 16 + x, y), _mp[v] if v else (60, 90, 60))
-_mi.resize((256, 128), _I.NEAREST).save(os.path.join(CFG.BUILD, 'medals_preview.png'))
+
 _hud, _ = HT.make(1, 2, _yel, _dk)
 rom[lo_half(0x7C) + 0x2100:lo_half(0x7C) + 0x2100 + len(_hud)] = _hud
 print('hud levels', len(_tracked))
@@ -545,6 +510,70 @@ def _gold(rgb):
 _p6 = [_rgb(R1[0x39BFC5 + 2 * i] | R1[0x39BFC6 + 2 * i] << 8) for i in range(15)]
 _p2 = [_rgb(R1[0x39BF45 + 2 * i] | R1[0x39BF46 + 2 * i] << 8) for i in range(2)] + [tuple(c) for c in cent]
 write_pal(lo_half(0x40) + 0x3A00, [_gold(c) for c in _p6] + [_gold(c) for c in _p2])
+def _silver(rgb):                                  # 5.4: silver version of the DK face colours (island medals)
+    l = (0.30 * rgb[0] + 0.59 * rgb[1] + 0.11 * rgb[2]) / 248
+    stops = [(0.0, (16, 16, 24)), (0.35, (88, 92, 108)), (0.7, (184, 188, 204)), (1.0, (255, 255, 255))]
+    for (l0, c0), (l1, c1) in zip(stops, stops[1:]):
+        if l <= l1:
+            t = (l - l0) / (l1 - l0)
+            c = [c0[k] + (c1[k] - c0[k]) * t for k in range(3)]
+            return (int(c[0]) >> 3) | ((int(c[1]) >> 3) << 5) | ((int(c[2]) >> 3) << 10)
+    return 0x7FFF
+write_pal(lo_half(0x40) + 0x3A40, [_silver(c) for c in _p6])
+def _medal(field_rgb=(120, 120, 120)):
+    """24x24 medal: the DK face from the beaten-level icon (map palette 6 indices) in a round rim.
+    Silver: drawn with palette 6 itself (the DK face as it is, grey rim). Gold: with the gold-face
+    palette, so it's the same gold DK face a 100% level gets."""
+    def dec(t):
+        b = R1[0x020000 + t * 32:0x020000 + t * 32 + 32]
+        return [[((b[y * 2] >> (7 - x)) & 1) | (((b[y * 2 + 1] >> (7 - x)) & 1) << 1) |
+                 (((b[16 + y * 2] >> (7 - x)) & 1) << 2) | (((b[17 + y * 2] >> (7 - x)) & 1) << 3)
+                 for x in range(8)] for y in range(8)]
+    face = [[0] * 16 for _ in range(16)]
+    for ty, tx, t in ((0, 0, 0), (0, 1, 1), (1, 0, 16), (1, 1, 17)):
+        d = dec(t)
+        for y in range(8):
+            for x in range(8): face[ty * 8 + y][tx * 8 + x] = d[y][x]
+    def pi(c): return 1 + min(range(15), key=lambda i: sum((a - b) ** 2 for a, b in zip(c, _p6[i])))
+    ol, rim, lit, field = pi((32, 16, 8)), pi((120, 120, 120)), pi((248, 248, 248)), pi(field_rgb)
+    g = [[0] * 24 for _ in range(24)]
+    cx = cy = 11.5
+    for y in range(24):
+        for x in range(24):
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if d <= 11.6: g[y][x] = ol
+            if d <= 10.6: g[y][x] = rim
+            if 9.6 < d <= 10.6 and ((x - cx) + (y - cy) < -6 or (x - cx) + (y - cy) > 9): g[y][x] = lit
+            if d <= 9.6: g[y][x] = ol
+            if d <= 8.8: g[y][x] = field
+    fy = [y for y in range(16) for x in range(16) if face[y][x]]
+    fx = [x for y in range(16) for x in range(16) if face[y][x]]
+    ox = int(round(11.5 - (min(fx) + max(fx)) / 2)); oy = int(round(11.5 - (min(fy) + max(fy)) / 2))
+    for y in range(16):                          # a dark edge around the face so it stands out
+        for x in range(16):
+            if not face[y][x] and any(0 <= y + dy < 16 and 0 <= x + dx < 16 and face[y + dy][x + dx]
+                                      for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1))):
+                if g[oy + y][ox + x] == field: g[oy + y][ox + x] = ol
+    for y in range(16):
+        for x in range(16):
+            if face[y][x]: g[oy + y][ox + x] = face[y][x]
+    return g
+_MED = _medal()
+_MEDG = _medal(field_rgb=(80, 32, 16))          # gold: a darker field, so the gold face reads
+_md = b''
+for g_ in (_MED, _MEDG):
+    for ty in range(3):
+        for tx in range(3):
+            _md += HT.tile_bytes([row[tx * 8:tx * 8 + 8] for row in g_[ty * 8:ty * 8 + 8]])
+rom[lo_half(0x7C) + 0x2600:lo_half(0x7C) + 0x2600 + len(_md)] = _md
+from PIL import Image as _I
+def _rgbw(v): return ((v & 31) << 3, ((v >> 5) & 31) << 3, ((v >> 10) & 31) << 3)
+_mi = _I.new('RGB', (48, 24))
+for i, (f, g_) in enumerate(((_gold, _MEDG), (_silver, _MEDG))):
+    pc = [(60, 90, 60)] + [_rgbw(f(c)) for c in _p6]
+    for y, row in enumerate(g_):
+        for x, v in enumerate(row): _mi.putpixel((i * 24 + x, y), pc[v])
+_mi.resize((384, 192), _I.NEAREST).save(os.path.join(CFG.BUILD, 'medals_preview.png'))
 FR = 0x7C0000
 for f in range(8):
     base = FR + f * 0x400

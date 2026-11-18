@@ -653,6 +653,8 @@ LifeCheck:                         ; a life lost (seen in the level or on the ma
 	BCS +
 	LDA.w #$0001
 	STA.l !Died
+	LDA.w #$0000                   ; 5.2: a new life, Cranky has his cane again
+	STA.l !CaneLost
 +	RTS
 
 HudFrame:
@@ -907,6 +909,8 @@ ClearStats:
 	CPX.w #$0100
 	BCC -
 	STA.l !Died
+	STA.l !CaneLost
+	STA.l !CaneSafe
 	LDA.l $7E0575
 	AND.w #$00FF
 	STA.l !LastLives

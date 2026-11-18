@@ -53,7 +53,7 @@ alt = bytearray(R1[POSE:POSE + POSE_LEN])
 T0 = lo_half(0x40)
 
 # --- place frames --------------------------------------------------------------
-free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b not in (0x78, 0x79, 0x7A)]   # $78: Funky table, $79: banana tables, $7A: Cranky/Candy tables
+free = [[lo_half(b), lo_half(b) + 0x8000] for b in range(0x41, 0x7C) if b not in (0x77, 0x78, 0x79, 0x7A)]   # $77: Cranky without his cane, $78: Funky table, $79: banana tables, $7A: Cranky/Candy tables
 placed = {}
 def put(data):
     for ext in free:
@@ -271,6 +271,16 @@ for i in g1['HUDBalloon_Idle']:
     d = recolor(NAMES[i][1], _BAL_C); o = put(d); a = snes(o)
     e = (0x3BCD28 + i * 4) - POSE; altC[e:e + 4] = bytes([a & 255, (a >> 8) & 255, a >> 16, 0])
 rom[lo_half(0x7A):lo_half(0x7A) + POSE_LEN] = altC
+import cane as CN                                   # 5.2: Cranky after losing his cane, at $77:0000
+altC2 = bytearray(altC)
+_nc = {}
+def _no_cane(r):
+    if id(r) not in _nc: _nc[id(r)] = CN.remove_cane(r)
+    return _nc[id(r)]
+for i, r in CM.ASSIGN_C.items():
+    e = (0x3BCD28 + i * 4) - POSE; altC2[e:e + 4] = put_raster(_no_cane(r))
+for p, r in CM.MAP_C.items(): altC2[p:p + 4] = put_raster(_remap(_no_cane(r), MC_MAP))
+rom[lo_half(0x77):lo_half(0x77) + POSE_LEN] = altC2
 rom[lo_half(0x7A) + 0x3000:lo_half(0x7A) + 0x3000 + POSE_LEN] = altY
 print('cranky/candy frames', len(gen_cache))
 # --- 5.0: Funky (DK side, after Cranky on R; unlocked by a 100% file) at $78:0000 ---

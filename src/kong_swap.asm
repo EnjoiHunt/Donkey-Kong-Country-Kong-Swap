@@ -13,6 +13,9 @@ exhirom
 !AltPalettes3 = $403B00     ; copy of $BC:8422-$BC:8511 with Funky in the DK slots
 !FunkyFace = $7C2400        ; Funky face tiles (VRAM tiles $EE/$EF, $FE/$FF)
 !TabC      = $7A0000        ; frame table with Cranky entries
+!TabC2     = $770000        ; 5.2: the same, Cranky without his cane
+!CaneLost  = $7E0430        ; 5.2: 1 once Cranky has lost his cane (until a DK barrel)
+!CaneSafe  = $7E0432        ; frame until which hits are ignored after losing it
 !TabY      = $7A3000        ; frame table with Candy entries
 !AltPalettes2 = $403600     ; copy of $BC:8422-$BC:8511 with Cranky/Candy palettes
 !MapPalCC  = $403700        ; 15 colours: Cranky & Candy on the map (sprite palette 4)
@@ -211,7 +214,11 @@ PoseLo:
 	BRA .o
 .k	LDA.l !TabK,x
 	RTL
-.c	LDA.l !TabC,x
+.c	LDA.l !CaneLost
+	BNE .c2
+	LDA.l !TabC,x
+	RTL
+.c2	LDA.l !TabC2,x
 	RTL
 .f	LDA.l !TabF,x
 	RTL
@@ -257,7 +264,11 @@ PoseHi:
 	BRA .o
 .k	LDA.l !TabK+2,x
 	RTL
-.c	LDA.l !TabC+2,x
+.c	LDA.l !CaneLost
+	BNE .c2
+	LDA.l !TabC+2,x
+	RTL
+.c2	LDA.l !TabC2+2,x
 	RTL
 .f	LDA.l !TabF+2,x
 	RTL
@@ -880,6 +891,7 @@ KongMain:
 	BNE +
 	JSR KiddyPound
 	JSR FunkySurf
+	JSR CrankySlow
 +	LDX.b $84
 	LDA.w $16FD,x
 	RTL
@@ -1583,3 +1595,143 @@ IconDMA:                        ; runs in NMI right after the icon frame is sent
 	JSL $B999AD
 	REP #$30
 	RTL
+
+; ---- 5.2: Cranky is an old man. He walks and runs a little slower than the others, and the first
+;      hit only knocks his cane away (then he's slower still); a DK barrel gives it back.
+org $BFA118 : JSL CaneHit           ; JSR CODE_BFA17E : SEC (a Kong was hit; RTS follows)
+org $BFC9CA : JSL CaneBack : NOP #2 ; LDA #$FBFF : AND $0579 (a DK barrel was broken)
+org $406000
+
+SlowTab:                            ; walk, run (DK: $0200, $0300) - with cane, then without
+	dw $01B0,$0220,$0140,$0180
+
+CrankySlow:
+	LDA.l !KFlag
+	CMP.w #!Magic2
+	BNE .out
+	LDA.l $7E056F               ; Cranky (DK slot) in the lead
+	CMP.w #$0001
+	BNE .out
+	PHX
+	LDX.b !CurIndex
+	LDA.l $7E1029,x             ; walking / running or in the air
+	CMP.w #$0002
+	BCS .done
+	LDA.l $7E050E               ; Y held: running
+	AND.w #$4000
+	BEQ +
+	LDA.w #2
++	PHA
+	LDA.l !CaneLost
+	BEQ +
+	LDA.w #4
++	CLC
+	ADC 1,s
+	TAX
+	PLA
+	LDA.l SlowTab,x
+	LDX.b !CurIndex
+	STA.l !HudTmp
+	LDA.l $7E0E89,x
+	BPL +
+	EOR.w #$FFFF
+	INC
+	CMP.l !HudTmp
+	BCC .done
+	LDA.l !HudTmp
+	EOR.w #$FFFF
+	INC
+	STA.l $7E0E89,x
+	BRA .done
++	CMP.l !HudTmp
+	BCC .done
+	LDA.l !HudTmp
+	STA.l $7E0E89,x
+.done
+	PLX
+.out
+	RTS
+
+CaneHit:                            ; X = the Kong that was hit
+	PHK                         ; call $BF:A2A0 (riding an animal? it takes the hit) and come back
+	PEA.w .back-1               ; through the RTL at $BF:CF52
+	PEA.w $CF52-1
+	JML $BFA2A0
+.back
+	BCS .done
+	JSR CaneAbsorb
+	BCS .done
+	PHK                         ; the normal hurt / lose-a-Kong code ($BF:A184)
+	PEA.w .back2-1
+	PEA.w $CF52-1
+	JML $BFA184
+.back2
+.done
+	SEC
+	RTL
+
+CaneAbsorb:                         ; carry set: Cranky loses his cane (or is still shaken up) instead
+	LDA.l !KFlag
+	CMP.w #!Magic2
+	BNE .no
+	LDA.l $7E0D45,x             ; the DK-side Kong
+	CMP.w #$0001
+	BNE .no
+	LDA.l !CaneSafe             ; just lost it: ignore hits for 2 seconds
+	SEC
+	SBC.l $7E0028
+	DEC
+	CMP.w #120
+	BCC .yes
+	LDA.l !CaneLost
+	BNE .no
+	LDA.w #$0001
+	STA.l !CaneLost
+	LDA.l $7E0028
+	CLC
+	ADC.w #120
+	STA.l !CaneSafe
+	LDA.l $7E1029,x             ; a little hop
+	BNE +
+	LDA.w #$0001
+	STA.l $7E1029,x
+	LDA.w #$0500
+	STA.l $7E0EF1,x
++	LDA.w #$0000
+	STA.l !DisplayedPose,x      ; redraw him without the cane
+	LDA.w #$0000
+	STA.l $7E0E89,x
+.yes
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+CaneBack:                           ; a DK barrel: Cranky gets his cane back
+	PHP
+	REP #$30
+	PHX
+	LDA.l !CaneLost
+	BEQ +
+	LDA.w #$0000
+	STA.l !CaneLost
+	JSR CaneRedraw
++	PLX
+	PLP
+	LDA.w #$FBFF
+	AND.w $0579
+	RTL
+
+CaneRedraw:                         ; make the Kongs' frames upload again
+	LDX.w #$0000
+-	LDA.l $7E0D45,x
+	CMP.w #$0001
+	BNE +
+	LDA.w #$0000
+	STA.l !DisplayedPose,x
++	INX
+	INX
+	CPX.w #$0010
+	BCC -
+	RTS
